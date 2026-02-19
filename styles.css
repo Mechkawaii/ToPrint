@@ -25,18 +25,10 @@ body{
   color: var(--text);
 }
 
-.topbar{
-  position: sticky;
-  top:0;
-  z-index: 5;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding: 14px 18px;
-  background: rgba(11,11,14,.78);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border);
+.topbar {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px 24px;
 }
 
 .brand{
@@ -66,13 +58,10 @@ body{
   font-size: 12px;
 }
 
-.container{
-  max-width: 1200px;
+.container {
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 18px;
-  display:flex;
-  flex-direction:column;
-  gap: 14px;
+  padding: 0 24px;
 }
 
 .grid{
@@ -251,3 +240,9 @@ input::placeholder{ color: rgba(185,185,195,.65); }
 .badge.critical{ border-color: rgba(255,77,77,.55); background: rgba(255,77,77,.12); }
 .badge.low{ border-color: rgba(255,210,0,.55); background: rgba(255,210,0,.12); }
 .badge.ok{ border-color: rgba(61,220,151,.45); background: rgba(61,220,151,.10); }
+.main-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
