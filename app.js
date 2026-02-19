@@ -13,13 +13,14 @@ import {
 
 /* ========= FIREBASE CONFIG ========= */
 const firebaseConfig = {
-  apiKey: "AIzaSyCUcaGdiF6deI5S6JNxwLeCameANAVEJEk",
+  apiKey: "AIzaSyCUcaGdiF6deI56S6JWXwleCameAWAYEJk",
   authDomain: "mechkawaii-to-print.firebaseapp.com",
   projectId: "mechkawaii-to-print",
-  storageBucket: "mechkawaii-to-print.appspot.com",
-  messagingSenderId: "3742880689",
-  appId: "1:3742880689:web:22d5876f2bc6aadb6a6818"
+  storageBucket: "mechkawaii-to-print.firebasestorage.app",
+  messagingSenderId: "37428806089",
+  appId: "1:37428806089:web:6f389bd03566fd7b6a6818"
 };
+
 
 /* ========= INIT FIREBASE ========= */
 const fbApp = initializeApp(firebaseConfig);
