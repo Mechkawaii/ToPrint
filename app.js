@@ -701,6 +701,20 @@ async function connectWorkspace(wsId) {
   });
 }
 
+// --- Firestore refuses `undefined` values: clean them before saving ---
+function cleanUndefined(obj) {
+  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (v !== undefined) out[k] = cleanUndefined(v);
+    }
+    return out;
+  }
+  return obj;
+}
+
 function scheduleCloudSave(force = false) {
   if (!currentWorkspaceId) return;
 
@@ -715,8 +729,10 @@ function scheduleCloudSave(force = false) {
   pendingSaveTimer = setTimeout(async () => {
     try {
       const ref = doc(fbDb, "workspaces", currentWorkspaceId);
+      const cleanedState = cleanUndefined(state);
+
       await setDoc(ref, {
-        state,
+        state: cleanedState,
         updatedAt: serverTimestamp(),
         updatedBy: DEVICE_ID
       }, { merge: true });
