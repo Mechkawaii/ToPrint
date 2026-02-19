@@ -234,3 +234,20 @@ input::placeholder{ color: rgba(185,185,195,.65); }
   border: 1px solid rgba(255,255,255,.10);
   padding: 4px;
 }
+/* Status coloring */
+.tr-critical{ outline: 2px solid rgba(255,77,77,.35); background: rgba(255,77,77,.07); }
+.tr-low{ outline: 2px solid rgba(255,210,0,.25); background: rgba(255,210,0,.06); }
+
+.badge{
+  display:inline-flex;
+  align-items:center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,.03);
+}
+.badge.critical{ border-color: rgba(255,77,77,.55); background: rgba(255,77,77,.12); }
+.badge.low{ border-color: rgba(255,210,0,.55); background: rgba(255,210,0,.12); }
+.badge.ok{ border-color: rgba(61,220,151,.45); background: rgba(61,220,151,.10); }
