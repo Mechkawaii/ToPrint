@@ -111,6 +111,11 @@ body{
 .kpi .label{ color: var(--muted); font-size: 12px; }
 .kpi .value{ font-size: 22px; font-weight: 800; margin-top: 4px; }
 .kpi .hint{ color: var(--muted); font-size: 12px; margin-top: 6px; }
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
 
 .notice{
   margin-top: 10px;
