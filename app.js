@@ -7,6 +7,11 @@ const STORAGE_KEY = "mechkawaii-production:v1";
 const $ = (sel, root=document) => root.querySelector(sel);
 const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
 
+function imgPathFor(it){
+  // Si un champ image existe un jour dans items.json, il sera prioritaire
+  return it.image || `./assets/images/${it.id}.png`;
+}
+
 function nowISO(){
   return new Date().toISOString();
 }
@@ -180,7 +185,13 @@ function renderPrintTable(state){
 
     tr.innerHTML = `
       <td><strong>${idx+1}</strong></td>
-      <td>${p.name}</td>
+      <td>
+  <div class="rowpiece">
+    <img class="thumb" src="${imgPathFor({id:p.id})}" alt="${p.name}" loading="lazy"
+         onerror="this.style.display='none'">
+    <span>${p.name}</span>
+  </div>
+</td>
       <td>${p.stock}</td>
       <td>${needPill} <span class="muted small">/ cible ${p.targetStock}</span></td>
       <td>${platesText}</td>
@@ -217,7 +228,13 @@ function renderStockTable(state){
   rows.forEach(it => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${it.name}</td>
+      <td>
+  <div class="rowpiece">
+    <img class="thumb" src="${imgPathFor(it)}" alt="${it.name}" loading="lazy"
+         onerror="this.style.display='none'">
+    <span>${it.name}</span>
+  </div>
+</td>
       <td>${it.perBox}</td>
       <td>${it.perPlate}</td>
       <td><strong>${it.stock}</strong></td>
