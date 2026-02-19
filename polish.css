@@ -4,17 +4,10 @@
    - Mieux agencer les blocs (plan vs stock)
    - Dashboard KPI responsive
 */
-
-:root{
-  --app-max: 1400px;
-}
-
-/* Aligne header et contenu sur la même largeur */
 .topbar,
 .container{
-  max-width: var(--app-max);
-  margin-left: auto;
-  margin-right: auto;
+  width: 100%;
+  margin: 0;
 }
 
 /* Un peu plus de respiration sur grands écrans */
@@ -50,4 +43,13 @@
   .main-grid{ grid-template-columns: 1fr; }
   .topbar, .container{ padding-left: 14px; padding-right: 14px; }
   #syncCode{ width: 160px; }
+}
+html, body {
+  overflow-x: hidden;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.container{
+  padding: 0 24px;
 }
