@@ -6,6 +6,7 @@
   <title>Mechkawaii – Suivi d'impression 3D</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
+
 <body>
   <header class="topbar">
     <div class="brand">
@@ -18,15 +19,18 @@
 
     <div class="top-actions">
       <button class="btn" id="btnExport">Exporter</button>
+
       <label class="btn btn-ghost file-btn">
         Importer
         <input type="file" id="fileImport" accept="application/json" />
       </label>
+
       <button class="btn btn-ghost" id="btnReset">Réinitialiser</button>
     </div>
   </header>
 
   <main class="container">
+    <!-- Dashboard -->
     <section class="card">
       <div class="card-head">
         <h2>Dashboard</h2>
@@ -36,19 +40,33 @@
             <input id="bufferInput" type="number" min="0" step="1" value="5" />
             <span class="muted">boîtes</span>
           </label>
+
           <button class="btn btn-accent" id="btnAssembleBox">Boîte assemblée</button>
         </div>
       </div>
 
       <div class="kpis" id="kpis"></div>
       <div class="notice" id="assembleNotice" hidden></div>
+
+      <p class="muted small" style="margin-top:10px">
+        <strong>Code couleur :</strong>
+        <span class="badge critical">CRITIQUE</span> bloque l’assemblage (stock &lt; par boîte) ·
+        <span class="badge low">SOUS TAMPON</span> stock sous l’objectif tampon ·
+        <span class="badge ok">OK</span> tampon atteint.
+      </p>
     </section>
 
     <section class="grid">
+      <!-- Print plan -->
       <section class="card">
         <div class="card-head">
           <h2>Plan d'impression (priorités)</h2>
           <div class="right">
+            <label class="inline">
+              Plateaux/jour
+              <input id="platesPerDay" type="number" min="1" step="1" value="8" />
+            </label>
+            <button class="btn" id="btnQueue">File 2 jours</button>
             <button class="btn" id="btnRecalc">Recalculer</button>
           </div>
         </div>
@@ -63,7 +81,7 @@
                 <th>Besoin (tampon)</th>
                 <th>Plateaux</th>
                 <th>À produire</th>
-                <td class="muted">${badge} <span class="muted"> ${whyText}</span></td>
+                <th>Statut / Pourquoi</th>
                 <th></th>
               </tr>
             </thead>
@@ -71,9 +89,14 @@
           </table>
         </div>
 
-        <p class="muted small">Astuce : clique <strong>Imprimé</strong> après un plateau (ou ajuste si tu as des pièces défectueuses).</p>
+        <div class="notice" id="queueNotice" hidden></div>
+
+        <p class="muted small">
+          Astuce : clique <strong>Imprimé</strong> après un plateau (et indique les éventuelles pièces défectueuses).
+        </p>
       </section>
 
+      <!-- Stock -->
       <section class="card">
         <div class="card-head">
           <h2>Stock</h2>
@@ -99,6 +122,7 @@
       </section>
     </section>
 
+    <!-- History -->
     <section class="card">
       <div class="card-head">
         <h2>Historique</h2>
@@ -122,7 +146,10 @@
           <tbody></tbody>
         </table>
       </div>
-      <p class="muted small">Le stock et l’historique sont stockés dans ton navigateur (local). Pense à exporter de temps en temps si tu changes d’ordinateur.</p>
+
+      <p class="muted small">
+        Le stock et l’historique sont stockés dans ton navigateur (local). Pense à exporter de temps en temps si tu changes d’ordinateur.
+      </p>
     </section>
   </main>
 
