@@ -170,6 +170,17 @@ function renderPrintTable(state){
 
   plan.forEach((p, idx) => {
     const tr = document.createElement("tr");
+const isCritical = p.stock < p.perBox;
+const isLow = !isCritical && p.stock < (state.bufferBoxes * p.perBox);
+
+if(isCritical) tr.classList.add("tr-critical");
+else if(isLow) tr.classList.add("tr-low");
+
+const badge = isCritical
+  ? `<span class="badge critical">CRITIQUE</span>`
+  : isLow
+    ? `<span class="badge low">SOUS TAMPON</span>`
+    : `<span class="badge ok">OK</span>`;
 
     const whyText = p.why.join(" • ");
     const needPill = p.need === 0
