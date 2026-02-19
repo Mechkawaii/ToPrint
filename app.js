@@ -17,7 +17,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 
 /* ========= FIREBASE CONFIG (nouvelle app web) ========= */
 const firebaseConfig = {
-  apiKey: "COLLE_ICI_LA_CLE_EXACTE",
+  apiKey: "AIzaSyCUcaGdiF6deI5S6JWxvLeCameAWAYEJK",
   authDomain: "mechkawaii-to-print.firebaseapp.com",
   projectId: "mechkawaii-to-print",
   storageBucket: "mechkawaii-to-print.firebasestorage.app",
