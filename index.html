@@ -4,7 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Mechkawaii – Suivi d'impression 3D</title>
+
+  <!-- Base styles (ton fichier actuel) -->
   <link rel="stylesheet" href="./styles.css" />
+  <!-- Petit polish (alignements + layout) -->
+  <link rel="stylesheet" href="./polish.css" />
 </head>
 
 <body>
@@ -17,13 +21,13 @@
       </div>
     </div>
 
-    <div class="top-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-
-      <!-- 🔥 Sync controls -->
-      <input id="syncCode" class="input" style="width:180px" placeholder="Code synchro…" />
+    <div class="top-actions">
+      <!-- Sync -->
+      <input id="syncCode" class="input" placeholder="Code synchro…" />
       <button class="btn" id="btnSyncConnect">Connecter</button>
       <button class="btn btn-ghost" id="btnSyncNew">Nouveau code</button>
 
+      <!-- Export / Import / Reset -->
       <button class="btn" id="btnExport">Exporter</button>
 
       <label class="btn btn-ghost file-btn">
@@ -36,7 +40,6 @@
   </header>
 
   <main class="container">
-
     <!-- Dashboard -->
     <section class="card">
       <div class="card-head">
@@ -52,10 +55,10 @@
         </div>
       </div>
 
-      <div class="kpis" id="kpis"></div>
-      <div class="notice" id="assembleNotice" hidden></div>
+      <!-- ✅ On met la grille responsive ici -->
+      <div class="kpis dashboard-grid" id="kpis"></div>
 
-      <!-- 🔥 Sync status -->
+      <div class="notice" id="assembleNotice" hidden></div>
       <div class="notice" id="syncNotice" hidden></div>
 
       <p class="muted small" style="margin-top:10px">
@@ -66,16 +69,12 @@
       </p>
     </section>
 
-    <section class="grid">
-      <!-- Print plan -->
-      <section class="card">
+    <section class="main-grid">
+      <!-- Plan d'impression -->
+      <section class="card" id="plan-section">
         <div class="card-head">
           <h2>Plan d'impression (priorités)</h2>
           <div class="right">
-            <label class="inline">
-              Plateaux/jour
-              <input id="platesPerDay" type="number" min="1" step="1" value="8" />
-            </label>
             <button class="btn" id="btnQueue">File 2 jours</button>
             <button class="btn" id="btnRecalc">Recalculer</button>
           </div>
@@ -105,12 +104,9 @@
           Astuce : clique <strong>Imprimé</strong> après un plateau.
         </p>
       </section>
-<div class="main-grid">
-   <div id="plan-section"></div>
-   <div id="stock-section"></div>
-</div>
+
       <!-- Stock -->
-      <section class="card">
+      <section class="card" id="stock-section">
         <div class="card-head">
           <h2>Stock</h2>
           <div class="right">
@@ -135,7 +131,7 @@
       </section>
     </section>
 
-    <!-- History -->
+    <!-- Historique -->
     <section class="card">
       <div class="card-head">
         <h2>Historique</h2>
@@ -170,7 +166,7 @@
     <span class="muted">Mechkawaii Production – GitHub Pages + Firebase Sync</span>
   </footer>
 
-  <!-- 🔥 IMPORTANT : module obligatoire pour Firebase -->
+  <!-- IMPORTANT : module obligatoire pour Firebase -->
   <script type="module" src="./app.js"></script>
 </body>
 </html>

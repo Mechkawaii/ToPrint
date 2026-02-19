@@ -1,0 +1,53 @@
+/* polish.css
+   Objectif:
+   - Aligner la topbar sur le même max-width que le contenu
+   - Mieux agencer les blocs (plan vs stock)
+   - Dashboard KPI responsive
+*/
+
+:root{
+  --app-max: 1400px;
+}
+
+/* Aligne header et contenu sur la même largeur */
+.topbar,
+.container{
+  max-width: var(--app-max);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Un peu plus de respiration sur grands écrans */
+.topbar{ padding-left: 24px; padding-right: 24px; }
+.container{ padding-left: 24px; padding-right: 24px; }
+
+/* Les actions de la topbar se mettent proprement à la ligne */
+.top-actions{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+#syncCode{ width: 190px; }
+
+/* KPI dashboard: grilles fluides */
+.dashboard-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+/* Plan vs Stock: le plan est prioritaire */
+.main-grid{
+  display:grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 24px;
+  align-items:start;
+}
+
+/* Sur petits écrans: 1 colonne */
+@media (max-width: 980px){
+  .main-grid{ grid-template-columns: 1fr; }
+  .topbar, .container{ padding-left: 14px; padding-right: 14px; }
+  #syncCode{ width: 160px; }
+}
