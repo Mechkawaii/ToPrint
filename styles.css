@@ -218,3 +218,19 @@ input::placeholder{ color: rgba(185,185,195,.65); }
   border-top: 1px solid var(--border);
   background: rgba(0,0,0,.18);
 }
+.rowpiece{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width: 220px;
+}
+
+.thumb{
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: rgba(255,255,255,.03);
+  border: 1px solid rgba(255,255,255,.10);
+  padding: 4px;
+}
