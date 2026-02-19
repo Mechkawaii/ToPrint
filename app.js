@@ -17,12 +17,12 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 
 /* ========= FIREBASE CONFIG (nouvelle app web) ========= */
 const firebaseConfig = {
-  apiKey: "AIzaSyCUcaGdiF6deI5S6JNxwLeCameAWAYEJK",
+  apiKey: "COLLE_ICI_LA_CLE_EXACTE",
   authDomain: "mechkawaii-to-print.firebaseapp.com",
   projectId: "mechkawaii-to-print",
   storageBucket: "mechkawaii-to-print.firebasestorage.app",
   messagingSenderId: "3742880689",
-  appId: "1:3742880689:web:6f389bd0356df7b6a6818"
+  appId: "COLLE_ICI_L_APPID_EXACT"
 };
 
 const fbApp = initializeApp(firebaseConfig);
