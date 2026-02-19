@@ -17,7 +17,13 @@
       </div>
     </div>
 
-    <div class="top-actions">
+    <div class="top-actions" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+
+      <!-- 🔥 Sync controls -->
+      <input id="syncCode" class="input" style="width:180px" placeholder="Code synchro…" />
+      <button class="btn" id="btnSyncConnect">Connecter</button>
+      <button class="btn btn-ghost" id="btnSyncNew">Nouveau code</button>
+
       <button class="btn" id="btnExport">Exporter</button>
 
       <label class="btn btn-ghost file-btn">
@@ -30,6 +36,7 @@
   </header>
 
   <main class="container">
+
     <!-- Dashboard -->
     <section class="card">
       <div class="card-head">
@@ -47,6 +54,9 @@
 
       <div class="kpis" id="kpis"></div>
       <div class="notice" id="assembleNotice" hidden></div>
+
+      <!-- 🔥 Sync status -->
+      <div class="notice" id="syncNotice" hidden></div>
 
       <p class="muted small" style="margin-top:10px">
         <strong>Code couleur :</strong>
@@ -92,7 +102,7 @@
         <div class="notice" id="queueNotice" hidden></div>
 
         <p class="muted small">
-          Astuce : clique <strong>Imprimé</strong> après un plateau (et indique les éventuelles pièces défectueuses).
+          Astuce : clique <strong>Imprimé</strong> après un plateau.
         </p>
       </section>
 
@@ -148,15 +158,16 @@
       </div>
 
       <p class="muted small">
-        Le stock et l’historique sont stockés dans ton navigateur (local). Pense à exporter de temps en temps si tu changes d’ordinateur.
+        Avec Firebase activé, la synchro est multi-appareils en temps réel.
       </p>
     </section>
   </main>
 
   <footer class="footer">
-    <span class="muted">Mechkawaii Production – outil local (GitHub Pages compatible)</span>
+    <span class="muted">Mechkawaii Production – GitHub Pages + Firebase Sync</span>
   </footer>
 
-  <script src="./app.js"></script>
+  <!-- 🔥 IMPORTANT : module obligatoire pour Firebase -->
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
