@@ -729,7 +729,9 @@ function scheduleCloudSave(force = false) {
   pendingSaveTimer = setTimeout(async () => {
     try {
       const ref = doc(fbDb, "workspaces", currentWorkspaceId);
-      const cleanedState = cleanUndefined(state);
+
+      // 🔥 Nettoyage total compatible Firestore
+      const cleanedState = JSON.parse(JSON.stringify(state));
 
       await setDoc(ref, {
         state: cleanedState,
