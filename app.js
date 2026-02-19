@@ -16,7 +16,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCUcaGdiF6deI5S6JNxwLeCameANAVEJEk",
   authDomain: "mechkawaii-to-print.firebaseapp.com",
   projectId: "mechkawaii-to-print",
-  storageBucket: "mechkawaii-to-print.firebasestorage.app",
+  storageBucket: "mechkawaii-to-print.appspot.com",
   messagingSenderId: "3742880689",
   appId: "1:3742880689:web:22d5876f2bc6aadb6a6818"
 };
