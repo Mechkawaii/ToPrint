@@ -1,103 +1,106 @@
 /* Mechkawaii Production - app.js
    Stock + plan d'impression + historique (localStorage)
+   + Indicateurs critiques (rouge/jaune/vert)
+   + File d'impression automatique sur 2 jours
+   + Vignettes d'images (./assets/images/<id>.png)
 */
 
 const STORAGE_KEY = "mechkawaii-production:v1";
 
-const $ = (sel, root=document) => root.querySelector(sel);
-const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-function imgPathFor(it){
-  // Si un champ image existe un jour dans items.json, il sera prioritaire
-  return it.image || `./assets/images/${it.id}.png`;
-}
-
-function nowISO(){
+function nowISO() {
   return new Date().toISOString();
 }
-function fmtDate(iso){
-  try{
+function fmtDate(iso) {
+  try {
     const d = new Date(iso);
-    return d.toLocaleString("fr-FR", { dateStyle:"short", timeStyle:"short" });
-  }catch{ return iso; }
+    return d.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
 }
-function clampInt(n, fallback=0){
+function clampInt(n, fallback = 0) {
   const x = Number.parseInt(n, 10);
   return Number.isFinite(x) ? x : fallback;
 }
-function ceilDiv(a,b){
-  if(b<=0) return 0;
-  return Math.ceil(a/b);
+function ceilDiv(a, b) {
+  if (b <= 0) return 0;
+  return Math.ceil(a / b);
 }
 
-async function loadBaseItems(){
+/** Image path for an item (auto: ./assets/images/<id>.png) */
+function imgPathFor(it) {
+  return it.image || `./assets/images/${it.id}.png`;
+}
+
+async function loadBaseItems() {
   const res = await fetch("./data/items.json", { cache: "no-store" });
-  if(!res.ok) throw new Error("Impossible de charger data/items.json");
+  if (!res.ok) throw new Error("Impossible de charger data/items.json");
   return await res.json();
 }
 
-function loadState(){
+function loadState() {
   const raw = localStorage.getItem(STORAGE_KEY);
-  if(!raw) return null;
-  try{ return JSON.parse(raw); }catch{ return null; }
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
-function saveState(state){
+function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-function makeInitialState(items){
+function makeInitialState(items) {
   return {
     bufferBoxes: 5,
-    items: items.map(it => ({...it})),
+    items: items.map((it) => ({ ...it })),
     log: [] // {ts,type,itemId,itemName,qty,detail, snapshotBefore?}
   };
 }
 
-function getItem(state, id){
-  return state.items.find(x => x.id === id);
+function getItem(state, id) {
+  return state.items.find((x) => x.id === id);
 }
 
-function computeKpis(state){
+function computeKpis(state) {
   const items = state.items;
 
-  // Boxes possible right now (based on each required item)
   const boxesPossibleByItem = items
-    .filter(it => it.perBox > 0)
-    .map(it => Math.floor(it.stock / it.perBox));
+    .filter((it) => it.perBox > 0)
+    .map((it) => Math.floor(it.stock / it.perBox));
 
   const boxesPossible = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
 
-  // Bottleneck(s)
   const minVal = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
   const bottlenecks = items
-    .filter(it => it.perBox > 0)
-    .filter(it => Math.floor(it.stock / it.perBox) === minVal)
-    .map(it => it.name);
+    .filter((it) => it.perBox > 0)
+    .filter((it) => Math.floor(it.stock / it.perBox) === minVal)
+    .map((it) => it.name);
 
-  // How many items are below target buffer
   const targetBoxes = state.bufferBoxes;
-  const critical = items.filter(it => it.perBox > 0 && it.stock < targetBoxes * it.perBox).length;
-
-  // Total stock lines
+  const critical = items.filter((it) => it.perBox > 0 && it.stock < targetBoxes * it.perBox).length;
   const lines = items.length;
 
   return { boxesPossible, bottlenecks, critical, lines };
 }
 
-function buildPrintPlan(state){
+function buildPrintPlan(state) {
   const targetBoxes = state.bufferBoxes;
-  const items = state.items.filter(it => it.perBox > 0);
+  const items = state.items.filter((it) => it.perBox > 0);
 
-  const plan = items.map(it => {
+  const plan = items.map((it) => {
     const targetStock = targetBoxes * it.perBox;
     const need = Math.max(0, targetStock - it.stock);
     const plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
     const produce = plates * it.perPlate;
     const boxesPossible = Math.floor(it.stock / it.perBox);
     const why = [];
-    // bottleneck indicator will be computed later
-    if(need === 0) why.push("OK tampon");
+    if (need === 0) why.push("OK tampon");
     else why.push("Stock < tampon");
     return {
       id: it.id,
@@ -114,39 +117,32 @@ function buildPrintPlan(state){
     };
   });
 
-  // Identify global bottleneck
-  const minBoxes = plan.length ? Math.min(...plan.map(p => p.boxesPossible)) : 0;
-  plan.forEach(p => {
-    if(p.boxesPossible === minBoxes){
-      p.why.unshift("Goulot boîte");
-    }
+  const minBoxes = plan.length ? Math.min(...plan.map((p) => p.boxesPossible)) : 0;
+  plan.forEach((p) => {
+    if (p.boxesPossible === minBoxes) p.why.unshift("Goulot boîte");
   });
 
-  // Priority sorting:
-  // 1) lowest boxesPossible (bottleneck)
-  // 2) highest box deficit (targetBoxes - stock/perBox)
-  // 3) highest need
-  // 4) lowest plates (quick win)
-  // 5) name
-  plan.sort((a,b) => {
-    if(a.boxesPossible !== b.boxesPossible) return a.boxesPossible - b.boxesPossible;
-    const defA = targetBoxes - (a.stock / a.perBox);
-    const defB = targetBoxes - (b.stock / b.perBox);
-    if(defA !== defB) return defB - defA;
-    if(a.need !== b.need) return b.need - a.need;
-    if(a.plates !== b.plates) return a.plates - b.plates;
+  // Sorting: bottleneck first, then deficit, then need, then quick wins
+  plan.sort((a, b) => {
+    if (a.boxesPossible !== b.boxesPossible) return a.boxesPossible - b.boxesPossible;
+    const defA = targetBoxes - a.stock / a.perBox;
+    const defB = targetBoxes - b.stock / b.perBox;
+    if (defA !== defB) return defB - defA;
+    if (a.need !== b.need) return b.need - a.need;
+    if (a.plates !== b.plates) return a.plates - b.plates;
     return a.name.localeCompare(b.name, "fr");
   });
 
   return plan;
 }
 
-function renderKpis(state){
+function renderKpis(state) {
   const { boxesPossible, bottlenecks, critical, lines } = computeKpis(state);
   const el = $("#kpis");
+  if (!el) return;
   el.innerHTML = "";
 
-  const mk = (label, value, hint="") => {
+  const mk = (label, value, hint = "") => {
     const d = document.createElement("div");
     d.className = "kpi";
     d.innerHTML = `
@@ -158,94 +154,117 @@ function renderKpis(state){
   };
 
   el.appendChild(mk("Boîtes complètes possibles", boxesPossible, "Selon tes stocks actuels"));
-  el.appendChild(mk("Pièces goulots", bottlenecks.length ? bottlenecks.slice(0,3).join(", ") + (bottlenecks.length>3 ? "…" : "") : "—", "Ce qui bloque la fermeture de boîtes"));
+  el.appendChild(
+    mk(
+      "Pièces goulots",
+      bottlenecks.length
+        ? bottlenecks.slice(0, 3).join(", ") + (bottlenecks.length > 3 ? "…" : "")
+        : "—",
+      "Ce qui bloque la fermeture de boîtes"
+    )
+  );
   el.appendChild(mk("Pièces sous tampon", critical, `Sous ${state.bufferBoxes} boîtes de stock cible`));
   el.appendChild(mk("Références suivies", lines, "Lignes de ton tableau"));
 }
 
-function renderPrintTable(state){
+function renderPrintTable(state) {
+  const table = $("#printTable");
+  if (!table) return;
   const tbody = $("#printTable tbody");
+  if (!tbody) return;
+
   tbody.innerHTML = "";
   const plan = buildPrintPlan(state);
 
   plan.forEach((p, idx) => {
     const tr = document.createElement("tr");
-const isCritical = p.stock < p.perBox;
-const isLow = !isCritical && p.stock < (state.bufferBoxes * p.perBox);
 
-if(isCritical) tr.classList.add("tr-critical");
-else if(isLow) tr.classList.add("tr-low");
+    // 🔴/🟡/🟢 status
+    const isCritical = p.stock < p.perBox; // can't assemble 1 box
+    const isLow = !isCritical && p.stock < state.bufferBoxes * p.perBox;
 
-const badge = isCritical
-  ? `<span class="badge critical">CRITIQUE</span>`
-  : isLow
-    ? `<span class="badge low">SOUS TAMPON</span>`
-    : `<span class="badge ok">OK</span>`;
+    if (isCritical) tr.classList.add("tr-critical");
+    else if (isLow) tr.classList.add("tr-low");
+
+    const badge = isCritical
+      ? `<span class="badge critical">CRITIQUE</span>`
+      : isLow
+      ? `<span class="badge low">SOUS TAMPON</span>`
+      : `<span class="badge ok">OK</span>`;
 
     const whyText = p.why.join(" • ");
-    const needPill = p.need === 0
-      ? `<span class="pill ok">OK</span>`
-      : `<span class="pill bad">Manque ${p.need}</span>`;
+
+    const needPill =
+      p.need === 0 ? `<span class="pill ok">OK</span>` : `<span class="pill bad">Manque ${p.need}</span>`;
 
     const platesText = p.plates === 0 ? "—" : String(p.plates);
     const produceText = p.produce === 0 ? "—" : `+${p.produce}`;
 
-    const btn = p.plates === 0
-      ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
-      : `<button class="btn btn-accent" data-action="printed" data-id="${p.id}" data-produce="${p.produce}" data-perplate="${p.perPlate}" data-plates="${p.plates}">Imprimé</button>`;
+    const btn =
+      p.plates === 0
+        ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
+        : `<button class="btn btn-accent" data-action="printed" data-id="${p.id}">Imprimé</button>`;
 
     tr.innerHTML = `
-      <td><strong>${idx+1}</strong></td>
+      <td><strong>${idx + 1}</strong></td>
+
       <td>
-  <div class="rowpiece">
-    <img class="thumb" src="${imgPathFor({id:p.id})}" alt="${p.name}" loading="lazy"
-         onerror="this.style.display='none'">
-    <span>${p.name}</span>
-  </div>
-</td>
+        <div class="rowpiece">
+          <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy"
+               onerror="this.style.display='none'">
+          <span>${p.name}</span>
+        </div>
+      </td>
+
       <td>${p.stock}</td>
       <td>${needPill} <span class="muted small">/ cible ${p.targetStock}</span></td>
       <td>${platesText}</td>
       <td>${produceText}</td>
-      <td class="muted">${whyText}</td>
+      <td class="muted">${badge} <span class="muted"> ${whyText}</span></td>
       <td>${btn}</td>
     `;
     tbody.appendChild(tr);
   });
 
   // attach events
-  $$('[data-action="printed"]', tbody).forEach(b => {
+  $$('[data-action="printed"]', tbody).forEach((b) => {
     b.addEventListener("click", () => {
       const id = b.getAttribute("data-id");
-      const perPlate = clampInt(b.getAttribute("data-perplate"), 0);
-      const plates = clampInt(b.getAttribute("data-plates"), 1);
-      // Default: validate 1 plateau at a time for a nicer workflow
-      // (You can still press multiple times.)
-      const qtyDefault = perPlate;
-      handlePrinted(state, id, qtyDefault, plates);
+      handlePrinted(state, id);
     });
   });
 }
 
-function renderStockTable(state){
+function renderStockTable(state) {
+  const table = $("#stockTable");
+  if (!table) return;
   const tbody = $("#stockTable tbody");
+  if (!tbody) return;
+
   tbody.innerHTML = "";
-  const q = ($("#stockSearch").value || "").trim().toLowerCase();
+  const q = (($("#stockSearch")?.value || "") + "").trim().toLowerCase();
 
   const rows = state.items
-    .filter(it => it.name.toLowerCase().includes(q))
-    .sort((a,b) => a.name.localeCompare(b.name, "fr"));
+    .filter((it) => it.name.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
-  rows.forEach(it => {
+  rows.forEach((it) => {
     const tr = document.createElement("tr");
+
+    // 🔴/🟡/🟢 status
+    const isCritical = it.perBox > 0 && it.stock < it.perBox;
+    const isLow = it.perBox > 0 && !isCritical && it.stock < state.bufferBoxes * it.perBox;
+    if (isCritical) tr.classList.add("tr-critical");
+    else if (isLow) tr.classList.add("tr-low");
+
     tr.innerHTML = `
       <td>
-  <div class="rowpiece">
-    <img class="thumb" src="${imgPathFor(it)}" alt="${it.name}" loading="lazy"
-         onerror="this.style.display='none'">
-    <span>${it.name}</span>
-  </div>
-</td>
+        <div class="rowpiece">
+          <img class="thumb" src="${imgPathFor(it)}" alt="${it.name}" loading="lazy"
+               onerror="this.style.display='none'">
+          <span>${it.name}</span>
+        </div>
+      </td>
       <td>${it.perBox}</td>
       <td>${it.perPlate}</td>
       <td><strong>${it.stock}</strong></td>
@@ -263,35 +282,40 @@ function renderStockTable(state){
   });
 
   // quick +/- 
-  $$('[data-action="inc"]', tbody).forEach(b => b.addEventListener("click", () => adjustStock(state, b.dataset.id, +1, "ajustement +1")));
-  $$('[data-action="dec"]', tbody).forEach(b => b.addEventListener("click", () => adjustStock(state, b.dataset.id, -1, "ajustement -1")));
+  $$('[data-action="inc"]', tbody).forEach((b) =>
+    b.addEventListener("click", () => adjustStock(state, b.dataset.id, +1, "ajustement +1"))
+  );
+  $$('[data-action="dec"]', tbody).forEach((b) =>
+    b.addEventListener("click", () => adjustStock(state, b.dataset.id, -1, "ajustement -1"))
+  );
 
   // apply custom
-  $$('[data-action="apply"]', tbody).forEach(b => {
+  $$('[data-action="apply"]', tbody).forEach((b) => {
     b.addEventListener("click", () => {
       const id = b.dataset.id;
       const row = b.closest("tr");
-      const qtyInput = $('[data-action="adj"][data-id="'+id+'"]', row);
-      const reasonInput = $('[data-action="reason"][data-id="'+id+'"]', row);
-      const qty = clampInt(qtyInput.value, 0);
-      const reason = (reasonInput.value || "").trim() || "ajustement manuel";
-      if(qty === 0){
+      const qtyInput = $(`[data-action="adj"][data-id="${id}"]`, row);
+      const reasonInput = $(`[data-action="reason"][data-id="${id}"]`, row);
+      const qty = clampInt(qtyInput?.value, 0);
+      const reason = (reasonInput?.value || "").trim() || "ajustement manuel";
+      if (qty === 0) {
         alert("Mets une quantité différente de 0 (ex: -2 ou +10).");
         return;
       }
       adjustStock(state, id, qty, reason);
-      qtyInput.value = "";
-      reasonInput.value = "";
+      if (qtyInput) qtyInput.value = "";
+      if (reasonInput) reasonInput.value = "";
     });
   });
 }
 
-function renderLog(state){
+function renderLog(state) {
   const tbody = $("#logTable tbody");
+  if (!tbody) return;
   tbody.innerHTML = "";
   const log = [...state.log].slice(-300).reverse(); // last 300, newest first
 
-  log.forEach(entry => {
+  log.forEach((entry) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${fmtDate(entry.ts)}</td>
@@ -304,15 +328,14 @@ function renderLog(state){
   });
 }
 
-function pushLog(state, entry){
+function pushLog(state, entry) {
   state.log.push(entry);
-  // keep reasonable size
-  if(state.log.length > 2000) state.log = state.log.slice(-1200);
+  if (state.log.length > 2000) state.log = state.log.slice(-1200);
 }
 
-function adjustStock(state, itemId, delta, reason){
+function adjustStock(state, itemId, delta, reason) {
   const it = getItem(state, itemId);
-  if(!it) return;
+  if (!it) return;
   const before = it.stock;
   it.stock = Math.max(0, it.stock + delta);
   pushLog(state, {
@@ -327,24 +350,23 @@ function adjustStock(state, itemId, delta, reason){
   renderAll(state);
 }
 
-function handlePrinted(state, itemId, qtyDefault, platesSuggested){
+/** Impression: ask plates + defects, then add to stock */
+function handlePrinted(state, itemId) {
   const it = getItem(state, itemId);
-  if(!it) return;
+  if (!it) return;
 
-  // ask how many plates printed (default 1) and defects
   const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
-  if(platesStr === null) return;
+  if (platesStr === null) return;
   const plates = Math.max(0, clampInt(platesStr, 1));
-  if(plates === 0) return;
+  if (plates === 0) return;
 
   const defectsStr = prompt(`Pièces défectueuses sur ces ${plates} plateau(x) ?\n(0 si tout est parfait)`, "0");
-  if(defectsStr === null) return;
+  if (defectsStr === null) return;
   const defects = Math.max(0, clampInt(defectsStr, 0));
 
   const produced = plates * it.perPlate;
   const added = Math.max(0, produced - defects);
 
-  const before = it.stock;
   it.stock = it.stock + added;
 
   pushLog(state, {
@@ -360,36 +382,33 @@ function handlePrinted(state, itemId, qtyDefault, platesSuggested){
   renderAll(state);
 }
 
-function canAssembleBox(state){
-  // Can we subtract perBox for all items without going negative?
+function canAssembleBox(state) {
   const blockers = [];
-  state.items.forEach(it => {
+  state.items.forEach((it) => {
     const need = it.perBox;
-    if(need > 0 && it.stock < need){
-      blockers.push(it.name);
-    }
+    if (need > 0 && it.stock < need) blockers.push(it.name);
   });
   return blockers;
 }
 
-function assembleBox(state){
+function assembleBox(state) {
   const blockers = canAssembleBox(state);
   const notice = $("#assembleNotice");
-  if(blockers.length){
-    notice.hidden = false;
-    notice.textContent = `Impossible d’assembler une boîte : stock insuffisant pour ${blockers.slice(0,4).join(", ")}${blockers.length>4 ? "…" : ""}.`;
+  if (blockers.length) {
+    if (notice) {
+      notice.hidden = false;
+      notice.textContent = `Impossible d’assembler une boîte : stock insuffisant pour ${blockers
+        .slice(0, 4)
+        .join(", ")}${blockers.length > 4 ? "…" : ""}.`;
+    }
     return;
   }
-  notice.hidden = true;
+  if (notice) notice.hidden = true;
 
-  // snapshot for undo
-  const snapshot = state.items.map(it => ({ id: it.id, stock: it.stock }));
+  const snapshot = state.items.map((it) => ({ id: it.id, stock: it.stock }));
 
-  // apply decrement
-  state.items.forEach(it => {
-    if(it.perBox > 0){
-      it.stock = Math.max(0, it.stock - it.perBox);
-    }
+  state.items.forEach((it) => {
+    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox);
   });
 
   pushLog(state, {
@@ -406,35 +425,33 @@ function assembleBox(state){
   renderAll(state);
 }
 
-function undoLast(state){
-  if(!state.log.length){
+function undoLast(state) {
+  if (!state.log.length) {
     alert("Rien à annuler.");
     return;
   }
   const last = state.log[state.log.length - 1];
 
-  // If we have a snapshotBefore, restore it (best for box assemble).
-  if(last.snapshotBefore){
-    last.snapshotBefore.forEach(s => {
+  if (last.snapshotBefore) {
+    last.snapshotBefore.forEach((s) => {
       const it = getItem(state, s.id);
-      if(it) it.stock = s.stock;
+      if (it) it.stock = s.stock;
     });
     state.log.pop();
-    pushLog(state, { ts: nowISO(), type:"undo", itemId:null, itemName:"—", qty:"", detail:`Annulation de: ${last.type}` });
+    pushLog(state, { ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
     saveState(state);
     renderAll(state);
     return;
   }
 
-  // Otherwise inverse simple actions
-  if(last.type === "stock" || last.type === "impression"){
+  if (last.type === "stock" || last.type === "impression") {
     const it = getItem(state, last.itemId);
-    if(it){
+    if (it) {
       const inv = -clampInt(last.qty, 0);
       it.stock = Math.max(0, it.stock + inv);
     }
     state.log.pop();
-    pushLog(state, { ts: nowISO(), type:"undo", itemId:null, itemName:"—", qty:"", detail:`Annulation de: ${last.type}` });
+    pushLog(state, { ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
     saveState(state);
     renderAll(state);
     return;
@@ -443,7 +460,7 @@ function undoLast(state){
   alert("Cette action ne peut pas être annulée automatiquement.");
 }
 
-function exportState(state){
+function exportState(state) {
   const payload = {
     exportedAt: nowISO(),
     bufferBoxes: state.bufferBoxes,
@@ -461,27 +478,27 @@ function exportState(state){
   URL.revokeObjectURL(url);
 }
 
-function importStateFile(file, currentState){
+function importStateFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
-      try{
+      try {
         const data = JSON.parse(String(reader.result));
-        // Minimal validation
-        if(!Array.isArray(data.items)) throw new Error("Fichier invalide : items manquants");
+        if (!Array.isArray(data.items)) throw new Error("Fichier invalide : items manquants");
         const state = {
           bufferBoxes: clampInt(data.bufferBoxes, 5),
-          items: data.items.map(it => ({
+          items: data.items.map((it) => ({
             id: String(it.id),
             name: String(it.name),
             perBox: clampInt(it.perBox, 0),
             perPlate: clampInt(it.perPlate, 0),
             stock: clampInt(it.stock, 0),
+            image: it.image ? String(it.image) : undefined
           })),
           log: Array.isArray(data.log) ? data.log : []
         };
         resolve(state);
-      }catch(e){
+      } catch (e) {
         reject(e);
       }
     };
@@ -490,9 +507,29 @@ function importStateFile(file, currentState){
   });
 }
 
-function renderAll(state){
-  $("#bufferInput").value = state.bufferBoxes;
-  $("#bufferLabel").textContent = state.bufferBoxes;
+/* 🖨 File automatique 2 jours */
+function buildTwoDayQueue(state, platesPerDay) {
+  const plan = buildPrintPlan(state).filter((p) => p.plates > 0);
+
+  const queue = [];
+  plan.forEach((p) => {
+    for (let i = 0; i < p.plates; i++) {
+      queue.push({ id: p.id, name: p.name, perPlate: p.perPlate });
+    }
+  });
+
+  const day1 = queue.slice(0, platesPerDay);
+  const day2 = queue.slice(platesPerDay, platesPerDay * 2);
+
+  return { day1, day2, remaining: Math.max(0, queue.length - platesPerDay * 2), total: queue.length };
+}
+
+function renderAll(state) {
+  const bufferInput = $("#bufferInput");
+  const bufferLabel = $("#bufferLabel");
+
+  if (bufferInput) bufferInput.value = state.bufferBoxes;
+  if (bufferLabel) bufferLabel.textContent = state.bufferBoxes;
 
   renderKpis(state);
   renderPrintTable(state);
@@ -500,72 +537,96 @@ function renderAll(state){
   renderLog(state);
 }
 
-async function main(){
+async function main() {
   let state = loadState();
-  if(!state){
+  if (!state) {
     const base = await loadBaseItems();
     state = makeInitialState(base);
     saveState(state);
   }
 
-  // wire UI
-  $("#bufferInput").addEventListener("change", (e) => {
+  // buffer
+  $("#bufferInput")?.addEventListener("change", (e) => {
     state.bufferBoxes = Math.max(0, clampInt(e.target.value, 5));
     saveState(state);
     renderAll(state);
   });
 
-  $("#btnRecalc").addEventListener("click", () => renderAll(state));
-  $("#stockSearch").addEventListener("input", () => renderStockTable(state));
+  $("#btnRecalc")?.addEventListener("click", () => renderAll(state));
+  $("#stockSearch")?.addEventListener("input", () => renderStockTable(state));
 
-  $("#btnExport").addEventListener("click", () => exportState(state));
+  $("#btnExport")?.addEventListener("click", () => exportState(state));
 
-  $("#fileImport").addEventListener("change", async (e) => {
+  $("#fileImport")?.addEventListener("change", async (e) => {
     const f = e.target.files && e.target.files[0];
-    if(!f) return;
-    try{
-      const imported = await importStateFile(f, state);
+    if (!f) return;
+    try {
+      const imported = await importStateFile(f);
       state = imported;
       saveState(state);
       renderAll(state);
       alert("Import réussi.");
-    }catch(err){
+    } catch (err) {
       alert("Import échoué : " + (err.message || err));
-    }finally{
+    } finally {
       e.target.value = "";
     }
   });
 
-  $("#btnReset").addEventListener("click", async () => {
-    if(!confirm("Réinitialiser le stock & l'historique (retour au fichier items.json) ?")) return;
+  $("#btnReset")?.addEventListener("click", async () => {
+    if (!confirm("Réinitialiser le stock & l'historique (retour au fichier items.json) ?")) return;
     const base = await loadBaseItems();
     state = makeInitialState(base);
     saveState(state);
     renderAll(state);
   });
 
-  $("#btnAssembleBox").addEventListener("click", () => {
-    if(!confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”."))
+  $("#btnAssembleBox")?.addEventListener("click", () => {
+    if (
+      !confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”.")
+    )
       return;
     assembleBox(state);
   });
 
-  $("#btnUndo").addEventListener("click", () => {
-    if(!confirm("Annuler la dernière action ?")) return;
+  $("#btnUndo")?.addEventListener("click", () => {
+    if (!confirm("Annuler la dernière action ?")) return;
     undoLast(state);
   });
 
-  $("#btnClearLog").addEventListener("click", () => {
-    if(!confirm("Vider l'historique ? (le stock reste inchangé)")) return;
+  $("#btnClearLog")?.addEventListener("click", () => {
+    if (!confirm("Vider l'historique ? (le stock reste inchangé)")) return;
     state.log = [];
     saveState(state);
     renderAll(state);
   });
 
+  // 🖨 Queue 2 jours (si les éléments existent dans index.html)
+  $("#btnQueue")?.addEventListener("click", () => {
+    const platesPerDay = Math.max(1, clampInt($("#platesPerDay")?.value, 8));
+    const { day1, day2, remaining, total } = buildTwoDayQueue(state, platesPerDay);
+
+    const fmt = (arr) =>
+      arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (+${x.perPlate})`).join("<br>") : "<em>—</em>";
+
+    const notice = $("#queueNotice");
+    if (!notice) {
+      alert("Le bloc d'affichage de file (queueNotice) n'existe pas dans index.html.");
+      return;
+    }
+    notice.hidden = false;
+    notice.innerHTML = `
+      <strong>File d'impression (plateaux/jour : ${platesPerDay})</strong><br><br>
+      <strong>Jour 1</strong><br>${fmt(day1)}<br><br>
+      <strong>Jour 2</strong><br>${fmt(day2)}<br><br>
+      <span class="muted">Total plateaux à faire : ${total}. Reste après 2 jours : ${remaining}.</span>
+    `;
+  });
+
   renderAll(state);
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   alert("Erreur au chargement : " + (err.message || err));
 });
