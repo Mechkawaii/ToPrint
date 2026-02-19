@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mechkawaii – Suivi d'impression 3D</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">MK</div>
+      <div class="titles">
+        <h1>Mechkawaii – Production</h1>
+        <p class="muted">Objectif tampon : <strong id="bufferLabel">5</strong> boîtes</p>
+      </div>
+    </div>
+
+    <div class="top-actions">
+      <button class="btn" id="btnExport">Exporter</button>
+      <label class="btn btn-ghost file-btn">
+        Importer
+        <input type="file" id="fileImport" accept="application/json" />
+      </label>
+      <button class="btn btn-ghost" id="btnReset">Réinitialiser</button>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <div class="card-head">
+        <h2>Dashboard</h2>
+        <div class="right">
+          <label class="inline">
+            Tampon
+            <input id="bufferInput" type="number" min="0" step="1" value="5" />
+            <span class="muted">boîtes</span>
+          </label>
+          <button class="btn btn-accent" id="btnAssembleBox">Boîte assemblée</button>
+        </div>
+      </div>
+
+      <div class="kpis" id="kpis"></div>
+      <div class="notice" id="assembleNotice" hidden></div>
+    </section>
+
+    <section class="grid">
+      <section class="card">
+        <div class="card-head">
+          <h2>Plan d'impression (priorités)</h2>
+          <div class="right">
+            <button class="btn" id="btnRecalc">Recalculer</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" id="printTable">
+            <thead>
+              <tr>
+                <th>Priorité</th>
+                <th>Pièce</th>
+                <th>Stock</th>
+                <th>Besoin (tampon)</th>
+                <th>Plateaux</th>
+                <th>À produire</th>
+                <th>Pourquoi</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <p class="muted small">Astuce : clique <strong>Imprimé</strong> après un plateau (ou ajuste si tu as des pièces défectueuses).</p>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Stock</h2>
+          <div class="right">
+            <input id="stockSearch" class="input" placeholder="Rechercher une pièce…" />
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" id="stockTable">
+            <thead>
+              <tr>
+                <th>Pièce</th>
+                <th>Par boîte</th>
+                <th>Par plateau</th>
+                <th>Stock</th>
+                <th>Ajuster</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Historique</h2>
+        <div class="right">
+          <button class="btn btn-ghost" id="btnUndo">Annuler la dernière action</button>
+          <button class="btn btn-ghost" id="btnClearLog">Vider l'historique</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="logTable">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Action</th>
+              <th>Pièce</th>
+              <th>Quantité</th>
+              <th>Détail</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="muted small">Le stock et l’historique sont stockés dans ton navigateur (local). Pense à exporter de temps en temps si tu changes d’ordinateur.</p>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span class="muted">Mechkawaii Production – outil local (GitHub Pages compatible)</span>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>
