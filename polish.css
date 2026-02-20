@@ -1,15 +1,12 @@
 /* polish.css (full-width + production polish)
    - Full width layout (no empty side gutters)
-   - No global horizontal scrollbar
-   - Tables scroll inside their wrappers if needed
+   - Tables scroll horizontally inside wrappers if needed
    - Sticky stock column on desktop
    - Denser table rows (production mode)
    - Stronger visual cues for CRITIQUE / SOUS TAMPON
 */
 
-html, body{
-  overflow-x: hidden;
-}
+/* ❌ Supprimé : overflow-x hidden (ça cassait le scroll horizontal) */
 
 /* Full width header + content */
 .topbar,
@@ -52,9 +49,11 @@ html, body{
   }
 }
 
+/* ✅ Scroll horizontal UNIQUEMENT dans les tableaux si nécessaire */
 .table-wrap{
   overflow-x: auto;
   max-width: 100%;
+  -webkit-overflow-scrolling: touch; /* iPhone: scroll fluide */
 }
 
 /* Denser tables (more rows visible) */
