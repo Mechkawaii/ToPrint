@@ -52,7 +52,6 @@ html, body{
   }
 }
 
-/* Tables never force page to scroll horizontally */
 .table-wrap{
   overflow-x: auto;
   max-width: 100%;
