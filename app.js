@@ -619,14 +619,18 @@ function renderPrintTable() {
   });
 
   $$('[data-action="printed"]', tbody).forEach((b) => {
-    btn.addEventListener("click", () => {
-  if (item.printGroup) {
-    handlePrintedGroup(item.printGroup);
-  } else {
-    handlePrinted(item.id);
-  }
+  b.addEventListener("click", () => {
+    const id = b.getAttribute("data-id");
+    const it = getItemById(id);
+    if (!it) return;
+
+    if (it.printGroup) {
+      handlePrintedGroup(it.printGroup);
+    } else {
+      handlePrinted(it.id);
+    }
+  });
 });
-}
 
 function renderStockTable() {
   const tbody = $("#stockTable tbody");
@@ -1010,18 +1014,14 @@ main().catch((e) => {
   alert("Erreur au chargement : " + (e?.message || e));
 });
 function handlePrintedGroup(groupId) {
-  const groupItems = state.items.filter(
-    it => it.printGroup === groupId
-  );
+  const groupItems = state.items.filter(it => it.printGroup === groupId);
   if (!groupItems.length) return;
 
-  const perVar = groupItems[0].perVariantPerPlate;
-  if (!perVar) return alert("perVariantPerPlate manquant");
+  const perVar = groupItems[0].perVariantPerPlate || 0;
+  if (!perVar) return alert("perVariantPerPlate manquant pour ce groupe.");
 
   const platesStr = prompt(
-    `Plateau mix (${groupItems.length} variantes)\n` +
-    `→ +${perVar} sur chaque variante\n\n` +
-    `Combien de plateaux imprimés ?`,
+    `Plateau mix (${groupItems.length} variantes)\n→ +${perVar} sur chaque variante\n\nCombien de plateaux imprimés ?`,
     "1"
   );
   if (platesStr === null) return;
@@ -1030,10 +1030,7 @@ function handlePrintedGroup(groupId) {
   if (!plates) return;
 
   const added = plates * perVar;
-
-  groupItems.forEach(it => {
-    it.stock += added;
-  });
+  groupItems.forEach(it => { it.stock += added; });
 
   pushLog({
     ts: nowISO(),
