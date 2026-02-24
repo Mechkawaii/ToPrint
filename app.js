@@ -514,11 +514,11 @@ function importStateObject(data) {
       perBox: clampInt(it.perBox, 0),
       perPlate: clampInt(it.perPlate, 0),
       stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined
-    
+      image: it.image ? String(it.image) : undefined,
       printGroup: it.printGroup ? String(it.printGroup) : undefined,
       perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
-      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined,})),
+      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
+    })),
     log: Array.isArray(data.log) ? data.log : [],
     meta: data.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
   };
