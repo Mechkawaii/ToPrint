@@ -1,47 +1,22 @@
-/* Mechkawaii Production - app.js (MODULE)
-   - Stock + plan d'impression + historique
-   - Ajustements manuels (+/- et quantité custom + raison)
-   - Bouton "Imprimé" (plateaux + défectueuses)
-   - Bouton "Boîte assemblée" (déduit une boîte)
-   - Undo dernière action (si snapshot dispo)
-   - Export / Import
-   - Indicateurs CRITIQUE / SOUS TAMPON / OK
-   - File d'impression automatique sur 2 jours (SANS plateaux/jour)
-   - Vignettes ./assets/images/<id>.png
-   - ✅ Sync Firebase (Firestore) multi-appareils
+/* Mechkawaii Production - app.js
+   Stock + plan d'impression + historique (localStorage)
+   + Indicateurs critiques (rouge/jaune/vert)
+   + File d'impression automatique sur 2 jours
+   + Vignettes d'images (./assets/images/<id>.png)
 */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+const STORAGE_KEY = "mechkawaii-production:v1";
 
-/* ========= FIREBASE CONFIG (nouvelle app web) ========= */
-const firebaseConfig = {
-  apiKey: "AIzaSyCUcaGdiF6deI56S6JWXwleCameAWAYEJk",
-  authDomain: "mechkawaii-to-print.firebaseapp.com",
-  projectId: "mechkawaii-to-print",
-  storageBucket: "mechkawaii-to-print.firebasestorage.app",
-  messagingSenderId: "3742880689",
-  appId: "COLLE_ICI_L_APPID_EXACT"
-};
-
-const fbApp = initializeApp(firebaseConfig);
-const fbAuth = getAuth(fbApp);
-const fbDb = getFirestore(fbApp);
-
-/* ========= LOCAL STORAGE ========= */
-const STORAGE_KEY = "mechkawaii-production:v3";
-const DEVICE_ID_KEY = "mechkawaii-production:deviceId";
-
-/* ========= DOM HELPERS ========= */
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-/* ========= UTILS ========= */
-function nowISO() { return new Date().toISOString(); }
+function nowISO() {
+  return new Date().toISOString();
+}
 function fmtDate(iso) {
   try {
-    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+    const d = new Date(iso);
+    return d.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
   } catch {
     return iso;
   }
@@ -50,35 +25,14 @@ function clampInt(n, fallback = 0) {
   const x = Number.parseInt(n, 10);
   return Number.isFinite(x) ? x : fallback;
 }
-function ceilDiv(a, b) { return b > 0 ? Math.ceil(a / b) : 0; }
-
-function imgPathFor(it) { return it.image || `./assets/images/${it.id}.png`; }
-
-function getDeviceId() {
-  let id = localStorage.getItem(DEVICE_ID_KEY);
-  if (!id) {
-    id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + "-" + Date.now());
-    localStorage.setItem(DEVICE_ID_KEY, id);
-  }
-  return id;
+function ceilDiv(a, b) {
+  if (b <= 0) return 0;
+  return Math.ceil(a / b);
 }
-const DEVICE_ID = getDeviceId();
 
-/* ========= STATE ========= */
-let state = null;                 // {bufferBoxes, items, log, meta}
-let currentWorkspaceId = null;    // code synchro
-let unsubSnapshot = null;
-let pendingSaveTimer = null;
-let suppressNextCloudWrite = false;
-
-/* ========= LOAD/SAVE LOCAL ========= */
-function loadLocalState() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
-}
-function saveLocalState(s) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+/** Image path for an item (auto: ./assets/images/<id>.png) */
+function imgPathFor(it) {
+  return it.image || `./assets/images/${it.id}.png`;
 }
 
 async function loadBaseItems() {
@@ -87,84 +41,109 @@ async function loadBaseItems() {
   return await res.json();
 }
 
+function loadState() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveState(state) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
 function makeInitialState(items) {
   return {
     bufferBoxes: 5,
-    items: items.map((it) => ({ ...it, stock: clampInt(it.stock, 0) })),
-    log: [],
-    meta: {
-      version: 3,
-      lastUpdatedAt: nowISO(),
-      lastUpdatedBy: DEVICE_ID,
-      workspaceId: null
-    }
+    items: items.map((it) => ({ ...it })),
+    log: [] // {ts,type,itemId,itemName,qty,detail, snapshotBefore?}
   };
 }
 
-function touchState() {
-  state.meta = state.meta || {};
-  state.meta.lastUpdatedAt = nowISO();
-  state.meta.lastUpdatedBy = DEVICE_ID;
-  state.meta.workspaceId = currentWorkspaceId || state.meta.workspaceId || null;
-}
-
-/* ========= LOG ========= */
-function pushLog(entry) {
-  state.log.push(entry);
-  if (state.log.length > 2000) state.log = state.log.slice(-1200);
-}
-
-/* ========= KPI / PLAN ========= */
-function computeKpis() {
-  const items = state.items;
-
-  const perBoxItems = items.filter((it) => it.perBox > 0);
-  const boxesPossibleByItem = perBoxItems.map((it) => Math.floor(it.stock / it.perBox));
-  const boxesPossible = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
-
-  const minVal = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
-  const bottlenecks = perBoxItems
-    .filter((it) => Math.floor(it.stock / it.perBox) === minVal)
-    .map((it) => it.name);
-
-  const targetBoxes = state.bufferBoxes;
-  const underBuffer = perBoxItems.filter((it) => it.stock < targetBoxes * it.perBox).length;
-
-  return { boxesPossible, bottlenecks, underBuffer, lines: items.length };
-}
-
-/* ========= GROUPED PRINTING (PATCH) =========
-   If an item has:
-     - printGroup: "routes_mix"
-     - perVariantPerPlate: 14
-   ...then 1 plateau prints ALL variants in that group.
-   Plates are computed from the MAX deficit among variants.
+/* ========= GROUPED PRINTING (mix plateaux) =========
+   Supports optional fields on items:
+     - printGroup: string
+     - printGroupLabel: string (optional)
+     - perVariantPerPlate: number (how many of EACH variant per mixed plate)
+   If these fields are missing (old export), we auto-enrich known Mechkawaii mixes.
 */
-function buildPrintGroups() {
-  const targetBoxes = state.bufferBoxes;
-  const map = new Map(); // groupId -> { id, label, perVar, variants:[item] }
+function enrichItemWithDefaultGrouping(it){
+  if(!it) return it;
+  if(it.printGroup) return it;
 
-  for (const it of state.items) {
-    if (!it.printGroup) continue;
+  const id = String(it.id || "");
+  const name = String(it.name || "");
+
+  // Accidentés: 3 variantes ×14 / plateau
+  if(/^accident-([123])$/i.test(id) || /^accidenté[_ ]([123])$/i.test(name) || /^accidente[_ ]([123])$/i.test(name)){
+    it.printGroup = "accidente_mix";
+    it.printGroupLabel = "Accidenté";
+    it.perVariantPerPlate = 14;
+    return it;
+  }
+
+  // Routes: droite/angle/croisement : 3 ×14 / plateau
+  if(id === "route-droite" || id === "route-angle" || id === "route-croisement" ||
+     /^route[_ ](droite|angle|croisement)$/i.test(name)){
+    it.printGroup = "routes_mix";
+    it.printGroupLabel = "Routes";
+    it.perVariantPerPlate = 14;
+    return it;
+  }
+
+  // Villes: 4 variantes ×10 / plateau
+  if(/^ville-([1-4])$/i.test(id) || /^ville[_ ]([1-4])$/i.test(name)){
+    it.printGroup = "villes_mix";
+    it.printGroupLabel = "Villes";
+    it.perVariantPerPlate = 10;
+    return it;
+  }
+
+  // Générateur + Génématrice: 21 chacun / plateau
+  if(id === "g-n-rateur" || id === "g-n-matrice" ||
+     /^générateur$/i.test(name) || /^génématrice$/i.test(name)){
+    it.printGroup = "gen_power_mix";
+    it.printGroupLabel = "Générateur + Génématrice";
+    it.perVariantPerPlate = 21;
+    return it;
+  }
+
+  return it;
+}
+
+function enrichStateItemsWithDefaultGrouping(state){
+  if(!state?.items) return;
+  state.items.forEach(enrichItemWithDefaultGrouping);
+}
+
+function buildPrintGroups(state){
+  const targetBoxes = state.bufferBoxes;
+  const map = new Map(); // groupId -> { id, label, perVar, items:[] }
+
+  for(const it of state.items){
+    if(!it.printGroup) continue;
     const gid = String(it.printGroup);
     const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
 
-    if (!map.has(gid)) {
+    if(!map.has(gid)){
       map.set(gid, {
         id: gid,
         label: it.printGroupLabel ? String(it.printGroupLabel) : gid,
         perVar,
-        variants: []
+        items: []
       });
     }
     const g = map.get(gid);
     g.perVar = Math.max(g.perVar || 0, perVar || 0);
-    g.variants.push(it);
+    g.items.push(it);
   }
 
-  const groups = [];
-  for (const g of map.values()) {
-    const needs = g.variants.map((it) => {
+  const out = [];
+  for(const g of map.values()){
+    const needs = g.items.map((it) => {
       const targetStock = targetBoxes * (it.perBox || 0);
       const need = Math.max(0, targetStock - (it.stock || 0));
       return { id: it.id, name: it.name, need, stock: it.stock, perBox: it.perBox, targetStock };
@@ -172,34 +151,82 @@ function buildPrintGroups() {
     const maxNeed = needs.length ? Math.max(...needs.map(n => n.need)) : 0;
     const plates = (g.perVar > 0 && maxNeed > 0) ? ceilDiv(maxNeed, g.perVar) : 0;
 
-    groups.push({
+    out.push({
       id: g.id,
-      label: `${g.label} (${g.variants.length}×${g.perVar})`,
+      label: `${g.label} (${g.items.length}×${g.perVar})`,
       baseLabel: g.label,
       perVar: g.perVar,
+      items: g.items,
       variants: needs,
       plates
     });
   }
-
-  return groups;
+  return out;
 }
 
-function getGroupById(groupId) {
-  const groups = buildPrintGroups();
-  return groups.find(g => g.id === groupId) || null;
+function handlePrintedGroup(state, groupId){
+  const gid = String(groupId || "");
+  const groupItems = state.items.filter(it => String(it.printGroup || "") === gid);
+  if(!groupItems.length) return;
+
+  const perVar = clampInt(groupItems[0].perVariantPerPlate, 0) || clampInt(groupItems[0].perPlate, 0);
+  const label = groupItems[0].printGroupLabel ? String(groupItems[0].printGroupLabel) : gid;
+
+  const platesStr = prompt(
+    `Plateau mix “${label}”\n→ +${perVar} sur CHAQUE variante\n\nCombien de plateaux imprimés ?`,
+    "1"
+  );
+  if(platesStr === null) return;
+  const plates = Math.max(0, clampInt(platesStr, 1));
+  if(plates === 0) return;
+
+  const addedEach = plates * perVar;
+  groupItems.forEach(it => { it.stock = clampInt(it.stock, 0) + addedEach; });
+
+  pushLog(state, {
+    ts: nowISO(),
+    type: "impression",
+    itemId: gid,
+    itemName: `Plateau mix: ${label}`,
+    qty: `+${addedEach} / variante`,
+    detail: `${plates} plateau(x) → +${addedEach} sur ${groupItems.length} variante(s). Défectueux ? ajuste via “Appliquer”.`
+  });
+
+  saveState(state);
+  renderAll(state);
 }
 
-function getGroupForItem(it) {
-  if (!it?.printGroup) return null;
-  return getGroupById(String(it.printGroup));
+function getItem(state, id) {
+  return state.items.find((x) => x.id === id);
 }
 
-function buildPrintPlan() {
+function computeKpis(state) {
+  const items = state.items;
+
+  const boxesPossibleByItem = items
+    .filter((it) => it.perBox > 0)
+    .map((it) => Math.floor(it.stock / it.perBox));
+
+  const boxesPossible = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
+
+  const minVal = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
+  const bottlenecks = items
+    .filter((it) => it.perBox > 0)
+    .filter((it) => Math.floor(it.stock / it.perBox) === minVal)
+    .map((it) => it.name);
+
+  const targetBoxes = state.bufferBoxes;
+  const critical = items.filter((it) => it.perBox > 0 && it.stock < targetBoxes * it.perBox).length;
+  const lines = items.length;
+
+  return { boxesPossible, bottlenecks, critical, lines };
+}
+
+function buildPrintPlan(state) {
   const targetBoxes = state.bufferBoxes;
   const items = state.items.filter((it) => it.perBox > 0);
 
-  const groups = buildPrintGroups();
+  const groups = buildPrintGroups(state);
   const groupById = new Map(groups.map(g => [g.id, g]));
 
   const plan = items.map((it) => {
@@ -215,7 +242,7 @@ function buildPrintPlan() {
       const g = groupById.get(String(it.printGroup));
       const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
       plates = g ? g.plates : (need > 0 ? ceilDiv(need, perVar) : 0);
-      produce = plates * perVar;         // per variante
+      produce = plates * perVar; // per variante
       perPlateDisplay = perVar || it.perPlate;
     } else {
       plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
@@ -238,21 +265,18 @@ function buildPrintPlan() {
       plates,
       produce,
       boxesPossible,
-      printGroup: it.printGroup ? String(it.printGroup) : null,
+      printGroup: it.printGroup ? String(it.printGroup) : undefined,
       why
     };
   });
 
-  // Mark bottlenecks (blocks box assembly)
   const minBoxes = plan.length ? Math.min(...plan.map((p) => p.boxesPossible)) : 0;
-  plan.forEach((p) => { if (p.boxesPossible === minBoxes) p.why.unshift("Goulot boîte"); });
+  plan.forEach((p) => {
+    if (p.boxesPossible === minBoxes) p.why.unshift("Goulot boîte");
+  });
 
-  // Sort: bottleneck first, then deficit, then need, then fewer plates
   plan.sort((a, b) => {
     if (a.boxesPossible !== b.boxesPossible) return a.boxesPossible - b.boxesPossible;
-    const defA = targetBoxes - a.stock / a.perBox;
-    const defB = targetBoxes - b.stock / b.perBox;
-    if (defA !== defB) return defB - defA;
     if (a.need !== b.need) return b.need - a.need;
     if (a.plates !== b.plates) return a.plates - b.plates;
     return a.name.localeCompare(b.name, "fr");
@@ -261,318 +285,52 @@ function buildPrintPlan() {
   return plan;
 }
 
-/* ========= 2-DAY QUEUE (NO plates/day) =========
-   On transforme le plan en "plateaux unitaires", puis on split en 2 jours (moitié / moitié).
-*/
-function buildTwoDayQueue() {
-  const plan = buildPrintPlan();
 
-  const groupPlates = new Map();
-  const groupMeta = new Map();
 
-  for (const p of plan) {
-    if (!p.printGroup) continue;
-    if (!groupPlates.has(p.printGroup)) {
-      groupPlates.set(p.printGroup, p.plates);
-      const g = getGroupById(p.printGroup);
-      groupMeta.set(p.printGroup, { label: g?.label || p.printGroup, perVar: p.perPlate, variantsCount: g?.variants?.length || "?" });
-    }
-  }
-
-  const queue = [];
-
-  const grouped = [...groupPlates.entries()]
-    .map(([id, plates]) => ({ id, plates, ...(groupMeta.get(id) || {}) }))
-    .filter(x => x.plates > 0)
-    .sort((a,b) => (b.plates - a.plates) || String(a.label).localeCompare(String(b.label), "fr"));
-
-  for (const g of grouped) {
-    for (let i = 0; i < g.plates; i++) queue.push({ kind: "group", id: g.id, name: g.label, perPlate: `+${g.perVar} ×${g.variantsCount}` });
-  }
-
-  const singles = plan.filter(p => !p.printGroup && p.plates > 0);
-  for (const p of singles) {
-    for (let i = 0; i < p.plates; i++) queue.push({ kind: "item", id: p.id, name: p.name, perPlate: `+${p.perPlate}` });
-  }
-
-  const half = Math.ceil(queue.length / 2);
-  return { day1: queue.slice(0, half), day2: queue.slice(half), total: queue.length };
-}
-
-/* ========= ACTIONS ========= */
-function getItemById(id) {
-  return state.items.find((x) => x.id === id);
-}
-
-function adjustStock(itemId, delta, reason = "ajustement manuel") {
-  const it = getItemById(itemId);
-  if (!it) return;
-
-  const before = it.stock;
-  it.stock = Math.max(0, it.stock + delta);
-
-  pushLog({
-    ts: nowISO(),
-    type: "stock",
-    itemId,
-    itemName: it.name,
-    qty: delta,
-    detail: reason + (it.stock === 0 && before + delta < 0 ? " (clamp à 0)" : "")
-  });
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-  scheduleCloudSave();
-}
-
-function handlePrinted(itemId) {
-  const it = getItemById(itemId);
-  if (!it) return;
-
-  // Plateau MIX : imprime toutes les variantes du groupe
-  if (it.printGroup) {
-    const g = getGroupForItem(it);
-    const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
-
-    const platesStr = prompt(
-      `Plateau MIX “${g?.baseLabel || it.printGroup}”\n` +
-      `→ ajoute ${perVar} pièces à CHAQUE variante\n\n` +
-      `Combien de plateaux imprimés ? (défaut: 1)`,
-      "1"
-    );
-    if (platesStr === null) return;
-    const plates = Math.max(0, clampInt(platesStr, 1));
-    if (plates === 0) return;
-
-    const addedEach = plates * perVar;
-
-    const affected = (g?.variants || []).map(v => v.id);
-    for (const vid of affected) {
-      const vIt = getItemById(vid);
-      if (vIt) vIt.stock += addedEach;
-    }
-
-    pushLog({
-      ts: nowISO(),
-      type: "impression",
-      itemId: it.printGroup,
-      itemName: `Plateau mix: ${g?.baseLabel || it.printGroup}`,
-      qty: `+${addedEach} / variante`,
-      detail: `${plates} plateau(x) → +${addedEach} sur ${affected.length} variante(s). Défectueux ? ajuste manuellement.`
-    });
-
-    touchState();
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave();
-    return;
-  }
-
-  // Plateau "simple" (pièce unique)
-  const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
-  if (platesStr === null) return;
-  const plates = Math.max(0, clampInt(platesStr, 1));
-  if (plates === 0) return;
-
-  const defectsStr = prompt(`Pièces défectueuses sur ces ${plates} plateau(x) ?\n(0 si tout est parfait)`, "0");
-  if (defectsStr === null) return;
-  const defects = Math.max(0, clampInt(defectsStr, 0));
-
-  const produced = plates * it.perPlate;
-  const added = Math.max(0, produced - defects);
-  it.stock += added;
-
-  pushLog({
-    ts: nowISO(),
-    type: "impression",
-    itemId,
-    itemName: it.name,
-    qty: added,
-    detail: `${plates} plateau(x) → ${produced} pièces, -${defects} défectueuses`
-  });
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-  scheduleCloudSave();
-}
-
-function canAssembleBox() {
-  const blockers = [];
-  state.items.forEach((it) => {
-    if (it.perBox > 0 && it.stock < it.perBox) blockers.push(it.name);
-  });
-  return blockers;
-}
-
-function assembleBox() {
-  const blockers = canAssembleBox();
-  const notice = $("#assembleNotice");
-
-  if (blockers.length) {
-    if (notice) {
-      notice.hidden = false;
-      notice.textContent = `Impossible d’assembler une boîte : stock insuffisant pour ${blockers.slice(0, 4).join(", ")}${blockers.length > 4 ? "…" : ""}.`;
-    }
-    return;
-  }
-  if (notice) notice.hidden = true;
-
-  const snapshot = state.items.map((it) => ({ id: it.id, stock: it.stock }));
-
-  state.items.forEach((it) => {
-    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox);
-  });
-
-  pushLog({
-    ts: nowISO(),
-    type: "boîte",
-    itemId: null,
-    itemName: "Boîte assemblée",
-    qty: 1,
-    detail: "Décrément du stock selon quantités par boîte",
-    snapshotBefore: snapshot
-  });
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-  scheduleCloudSave();
-}
-
-function undoLast() {
-  if (!state.log.length) { alert("Rien à annuler."); return; }
-
-  const last = state.log[state.log.length - 1];
-
-  // If we have snapshot, restore precisely
-  if (last.snapshotBefore) {
-    last.snapshotBefore.forEach((s) => {
-      const it = getItemById(s.id);
-      if (it) it.stock = s.stock;
-    });
-
-    state.log.pop();
-    pushLog({ ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
-
-    touchState();
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave();
-    return;
-  }
-
-  // Otherwise invert qty for stock/impression
-  if (last.type === "stock" || last.type === "impression") {
-    const it = getItemById(last.itemId);
-    if (it) {
-      const inv = -clampInt(last.qty, 0);
-      it.stock = Math.max(0, it.stock + inv);
-    }
-
-    state.log.pop();
-    pushLog({ ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
-
-    touchState();
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave();
-    return;
-  }
-
-  alert("Cette action ne peut pas être annulée automatiquement.");
-}
-
-function exportState() {
-  const payload = {
-    exportedAt: nowISO(),
-    bufferBoxes: state.bufferBoxes,
-    items: state.items,
-    log: state.log,
-    meta: state.meta
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "mechkawaii-production-export.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function importStateObject(data) {
-  if (!data || !Array.isArray(data.items)) throw new Error("Fichier invalide : items manquants");
-
-  state = {
-    bufferBoxes: clampInt(data.bufferBoxes, 5),
-    items: data.items.map((it) => ({
-      id: String(it.id),
-      name: String(it.name),
-      perBox: clampInt(it.perBox, 0),
-      perPlate: clampInt(it.perPlate, 0),
-      stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined,
-      printGroup: it.printGroup ? String(it.printGroup) : undefined,
-      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
-      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
-    })),
-    log: Array.isArray(data.log) ? data.log : [],
-    meta: data.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
-  };
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-
-  // ✅ Important : après import, on pousse au cloud si connecté
-  scheduleCloudSave(true);
-}
-
-function importStateFile(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      try { resolve(JSON.parse(String(reader.result))); }
-      catch (e) { reject(e); }
-    };
-    reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
-    reader.readAsText(file);
-  });
-}
-
-/* ========= RENDER ========= */
-function renderKpis() {
+function renderKpis(state) {
+  const { boxesPossible, bottlenecks, critical, lines } = computeKpis(state);
   const el = $("#kpis");
   if (!el) return;
-  const { boxesPossible, bottlenecks, underBuffer, lines } = computeKpis();
-
   el.innerHTML = "";
+
   const mk = (label, value, hint = "") => {
     const d = document.createElement("div");
     d.className = "kpi";
-    d.innerHTML = `<div class="label">${label}</div><div class="value">${value}</div><div class="hint">${hint}</div>`;
+    d.innerHTML = `
+      <div class="label">${label}</div>
+      <div class="value">${value}</div>
+      <div class="hint">${hint}</div>
+    `;
     return d;
   };
 
   el.appendChild(mk("Boîtes complètes possibles", boxesPossible, "Selon tes stocks actuels"));
-  el.appendChild(mk("Pièces goulots", bottlenecks.length ? bottlenecks.slice(0, 3).join(", ") + (bottlenecks.length > 3 ? "…" : "") : "—", "Ce qui bloque la fermeture de boîtes"));
-  el.appendChild(mk("Pièces sous tampon", underBuffer, `Sous ${state.bufferBoxes} boîtes (cible)`));
+  el.appendChild(
+    mk(
+      "Pièces goulots",
+      bottlenecks.length
+        ? bottlenecks.slice(0, 3).join(", ") + (bottlenecks.length > 3 ? "…" : "")
+        : "—",
+      "Ce qui bloque la fermeture de boîtes"
+    )
+  );
+  el.appendChild(mk("Pièces sous tampon", critical, `Sous ${state.bufferBoxes} boîtes de stock cible`));
   el.appendChild(mk("Références suivies", lines, "Lignes de ton tableau"));
 }
 
-function renderPrintTable() {
+function renderPrintTable(state) {
+  const table = $("#printTable");
+  if (!table) return;
   const tbody = $("#printTable tbody");
   if (!tbody) return;
 
   tbody.innerHTML = "";
-  const plan = buildPrintPlan();
+  const plan = buildPrintPlan(state);
 
   plan.forEach((p, idx) => {
     const tr = document.createElement("tr");
 
+    // 🔴/🟡/🟢 status
     const isCritical = p.stock < p.perBox; // can't assemble 1 box
     const isLow = !isCritical && p.stock < state.bufferBoxes * p.perBox;
 
@@ -582,14 +340,13 @@ function renderPrintTable() {
     const badge = isCritical
       ? `<span class="badge critical">CRITIQUE</span>`
       : isLow
-        ? `<span class="badge low">SOUS TAMPON</span>`
-        : `<span class="badge ok">OK</span>`;
+      ? `<span class="badge low">SOUS TAMPON</span>`
+      : `<span class="badge ok">OK</span>`;
 
     const whyText = p.why.join(" • ");
 
-    const needPill = (p.need === 0)
-      ? `<span class="pill ok">OK</span>`
-      : `<span class="pill bad">Manque ${p.need}</span>`;
+    const needPill =
+      p.need === 0 ? `<span class="pill ok">OK</span>` : `<span class="pill bad">Manque ${p.need}</span>`;
 
     const platesText = p.plates === 0 ? "—" : String(p.plates);
     const produceText = p.produce === 0 ? "—" : `+${p.produce}`;
@@ -601,6 +358,7 @@ function renderPrintTable() {
 
     tr.innerHTML = `
       <td><strong>${idx + 1}</strong></td>
+
       <td>
         <div class="rowpiece">
           <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy"
@@ -608,6 +366,7 @@ function renderPrintTable() {
           <span>${p.name}</span>
         </div>
       </td>
+
       <td>${p.stock}</td>
       <td>${needPill} <span class="muted small">/ cible ${p.targetStock}</span></td>
       <td>${platesText}</td>
@@ -618,21 +377,21 @@ function renderPrintTable() {
     tbody.appendChild(tr);
   });
 
+  // attach events
   $$('[data-action="printed"]', tbody).forEach((b) => {
-  b.addEventListener("click", () => {
-    const id = b.getAttribute("data-id");
-    const it = getItemById(id);
-    if (!it) return;
-
-    if (it.printGroup) {
-      handlePrintedGroup(it.printGroup);
-    } else {
-      handlePrinted(it.id);
-    }
+    b.addEventListener("click", () => {
+      const id = b.getAttribute("data-id");
+      const it = getItem(state, id);
+      if (!it) return;
+      if (it.printGroup) handlePrintedGroup(state, it.printGroup);
+      else handlePrinted(state, it.id);
+    });
   });
-});
 }
-function renderStockTable() {
+
+function renderStockTable(state) {
+  const table = $("#stockTable");
+  if (!table) return;
   const tbody = $("#stockTable tbody");
   if (!tbody) return;
 
@@ -646,9 +405,9 @@ function renderStockTable() {
   rows.forEach((it) => {
     const tr = document.createElement("tr");
 
+    // 🔴/🟡/🟢 status
     const isCritical = it.perBox > 0 && it.stock < it.perBox;
     const isLow = it.perBox > 0 && !isCritical && it.stock < state.bufferBoxes * it.perBox;
-
     if (isCritical) tr.classList.add("tr-critical");
     else if (isLow) tr.classList.add("tr-low");
 
@@ -676,44 +435,39 @@ function renderStockTable() {
     tbody.appendChild(tr);
   });
 
-  // quick +/- buttons
+  // quick +/- 
   $$('[data-action="inc"]', tbody).forEach((b) =>
-    b.addEventListener("click", () => adjustStock(b.dataset.id, +1, "ajustement +1"))
+    b.addEventListener("click", () => adjustStock(state, b.dataset.id, +1, "ajustement +1"))
   );
   $$('[data-action="dec"]', tbody).forEach((b) =>
-    b.addEventListener("click", () => adjustStock(b.dataset.id, -1, "ajustement -1"))
+    b.addEventListener("click", () => adjustStock(state, b.dataset.id, -1, "ajustement -1"))
   );
 
-  // apply custom adjustment
+  // apply custom
   $$('[data-action="apply"]', tbody).forEach((b) => {
     b.addEventListener("click", () => {
       const id = b.dataset.id;
       const row = b.closest("tr");
       const qtyInput = $(`[data-action="adj"][data-id="${id}"]`, row);
       const reasonInput = $(`[data-action="reason"][data-id="${id}"]`, row);
-
       const qty = clampInt(qtyInput?.value, 0);
       const reason = (reasonInput?.value || "").trim() || "ajustement manuel";
-
       if (qty === 0) {
         alert("Mets une quantité différente de 0 (ex: -2 ou +10).");
         return;
       }
-
-      adjustStock(id, qty, reason);
-
+      adjustStock(state, id, qty, reason);
       if (qtyInput) qtyInput.value = "";
       if (reasonInput) reasonInput.value = "";
     });
   });
 }
 
-function renderLog() {
+function renderLog(state) {
   const tbody = $("#logTable tbody");
   if (!tbody) return;
-
   tbody.innerHTML = "";
-  const log = [...state.log].slice(-300).reverse();
+  const log = [...state.log].slice(-300).reverse(); // last 300, newest first
 
   log.forEach((entry) => {
     const tr = document.createElement("tr");
@@ -728,216 +482,252 @@ function renderLog() {
   });
 }
 
-function renderAll() {
+function pushLog(state, entry) {
+  state.log.push(entry);
+  if (state.log.length > 2000) state.log = state.log.slice(-1200);
+}
+
+function adjustStock(state, itemId, delta, reason) {
+  const it = getItem(state, itemId);
+  if (!it) return;
+  const before = it.stock;
+  it.stock = Math.max(0, it.stock + delta);
+  pushLog(state, {
+    ts: nowISO(),
+    type: "stock",
+    itemId,
+    itemName: it.name,
+    qty: delta,
+    detail: reason + (it.stock === 0 && before + delta < 0 ? " (clamp à 0)" : "")
+  });
+  saveState(state);
+  renderAll(state);
+}
+
+/** Impression: ask plates + defects, then add to stock */
+function handlePrinted(state, itemId) {
+  const it = getItem(state, itemId);
+  if (!it) return;
+
+  const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
+  if (platesStr === null) return;
+  const plates = Math.max(0, clampInt(platesStr, 1));
+  if (plates === 0) return;
+
+  const defectsStr = prompt(`Pièces défectueuses sur ces ${plates} plateau(x) ?\n(0 si tout est parfait)`, "0");
+  if (defectsStr === null) return;
+  const defects = Math.max(0, clampInt(defectsStr, 0));
+
+  const produced = plates * it.perPlate;
+  const added = Math.max(0, produced - defects);
+
+  it.stock = it.stock + added;
+
+  pushLog(state, {
+    ts: nowISO(),
+    type: "impression",
+    itemId,
+    itemName: it.name,
+    qty: added,
+    detail: `${plates} plateau(x) → ${produced} pièces, -${defects} défectueuses`
+  });
+
+  saveState(state);
+  renderAll(state);
+}
+
+function canAssembleBox(state) {
+  const blockers = [];
+  state.items.forEach((it) => {
+    const need = it.perBox;
+    if (need > 0 && it.stock < need) blockers.push(it.name);
+  });
+  return blockers;
+}
+
+function assembleBox(state) {
+  const blockers = canAssembleBox(state);
+  const notice = $("#assembleNotice");
+  if (blockers.length) {
+    if (notice) {
+      notice.hidden = false;
+      notice.textContent = `Impossible d’assembler une boîte : stock insuffisant pour ${blockers
+        .slice(0, 4)
+        .join(", ")}${blockers.length > 4 ? "…" : ""}.`;
+    }
+    return;
+  }
+  if (notice) notice.hidden = true;
+
+  const snapshot = state.items.map((it) => ({ id: it.id, stock: it.stock }));
+
+  state.items.forEach((it) => {
+    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox);
+  });
+
+  pushLog(state, {
+    ts: nowISO(),
+    type: "boîte",
+    itemId: null,
+    itemName: "Boîte assemblée",
+    qty: 1,
+    detail: "Décrément du stock selon quantités par boîte",
+    snapshotBefore: snapshot
+  });
+
+  saveState(state);
+  renderAll(state);
+}
+
+function undoLast(state) {
+  if (!state.log.length) {
+    alert("Rien à annuler.");
+    return;
+  }
+  const last = state.log[state.log.length - 1];
+
+  if (last.snapshotBefore) {
+    last.snapshotBefore.forEach((s) => {
+      const it = getItem(state, s.id);
+      if (it) it.stock = s.stock;
+    });
+    state.log.pop();
+    pushLog(state, { ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
+    saveState(state);
+    renderAll(state);
+    return;
+  }
+
+  if (last.type === "stock" || last.type === "impression") {
+    const it = getItem(state, last.itemId);
+    if (it) {
+      const inv = -clampInt(last.qty, 0);
+      it.stock = Math.max(0, it.stock + inv);
+    }
+    state.log.pop();
+    pushLog(state, { ts: nowISO(), type: "undo", itemId: null, itemName: "—", qty: "", detail: `Annulation de: ${last.type}` });
+    saveState(state);
+    renderAll(state);
+    return;
+  }
+
+  alert("Cette action ne peut pas être annulée automatiquement.");
+}
+
+function exportState(state) {
+  const payload = {
+    exportedAt: nowISO(),
+    bufferBoxes: state.bufferBoxes,
+    items: state.items,
+    log: state.log
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "mechkawaii-production-export.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importStateFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        if (!Array.isArray(data.items)) throw new Error("Fichier invalide : items manquants");
+        const state = {
+          bufferBoxes: clampInt(data.bufferBoxes, 5),
+          items: data.items.map((it) => ({
+            id: String(it.id),
+            name: String(it.name),
+            perBox: clampInt(it.perBox, 0),
+            perPlate: clampInt(it.perPlate, 0),
+            stock: clampInt(it.stock, 0),
+            image: it.image ? String(it.image) : undefined,
+            printGroup: it.printGroup ? String(it.printGroup) : undefined,
+            printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined,
+            perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined
+          })),
+          log: Array.isArray(data.log) ? data.log : []
+        };
+        enrichStateItemsWithDefaultGrouping(state);
+        resolve(state);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
+    reader.readAsText(file);
+  });
+}
+
+/* 🖨 File automatique 2 jours */
+function buildTwoDayQueue(state, platesPerDay) {
+  const plan = buildPrintPlan(state).filter((p) => p.plates > 0);
+
+  const queue = [];
+  plan.forEach((p) => {
+    for (let i = 0; i < p.plates; i++) {
+      queue.push({ id: p.id, name: p.name, perPlate: p.perPlate });
+    }
+  });
+
+  const day1 = queue.slice(0, platesPerDay);
+  const day2 = queue.slice(platesPerDay, platesPerDay * 2);
+
+  return { day1, day2, remaining: Math.max(0, queue.length - platesPerDay * 2), total: queue.length };
+}
+
+function renderAll(state) {
   const bufferInput = $("#bufferInput");
   const bufferLabel = $("#bufferLabel");
 
   if (bufferInput) bufferInput.value = state.bufferBoxes;
   if (bufferLabel) bufferLabel.textContent = state.bufferBoxes;
 
-  renderKpis();
-  renderPrintTable();
-  renderStockTable();
-  renderLog();
+  renderKpis(state);
+  renderPrintTable(state);
+  renderStockTable(state);
+  renderLog(state);
 }
 
-/* ========= SYNC UI ========= */
-function showSyncNotice(text) {
-  const el = $("#syncNotice");
-  if (!el) return;
-  el.hidden = !text;
-  el.textContent = text || "";
-}
-
-function randomSyncCode() {
-  const part = () => Math.random().toString(36).slice(2, 6);
-  return `${part()}-${part()}-${part()}`;
-}
-
-/* ========= FIREBASE SYNC ========= */
-async function ensureAuth() {
-  return new Promise((resolve, reject) => {
-    onAuthStateChanged(fbAuth, async (user) => {
-      try {
-        if (user) return resolve(user);
-        const cred = await signInAnonymously(fbAuth);
-        resolve(cred.user);
-      } catch (e) {
-        reject(e);
-      }
-    });
-  });
-}
-
-function stateUpdatedAt(s) {
-  return (s?.meta?.lastUpdatedAt) || "";
-}
-
-function normalizeCloudState(cloud) {
-  // ensure structure
-  return {
-    bufferBoxes: clampInt(cloud.bufferBoxes, 5),
-    items: Array.isArray(cloud.items) ? cloud.items.map((it) => ({
-      id: String(it.id),
-      name: String(it.name),
-      perBox: clampInt(it.perBox, 0),
-      perPlate: clampInt(it.perPlate, 0),
-      stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined
-    })) : [],
-    log: Array.isArray(cloud.log) ? cloud.log : [],
-    meta: cloud.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: "cloud", workspaceId: currentWorkspaceId || null }
-  };
-}
-
-async function connectWorkspace(wsId) {
-  if (unsubSnapshot) { unsubSnapshot(); unsubSnapshot = null; }
-
-  currentWorkspaceId = wsId;
-  state.meta.workspaceId = wsId;
-  saveLocalState(state);
-
-  const ref = doc(fbDb, "workspaces", wsId);
-  const snap = await getDoc(ref);
-
-  if (!snap.exists()) {
-    // first device creates cloud doc from local
-    await setDoc(ref, {
-      state,
-      updatedAt: serverTimestamp(),
-      updatedBy: DEVICE_ID
-    }, { merge: true });
-
-    showSyncNotice(`✅ Synchro active (workspace créé) : ${wsId}`);
-  } else {
-    // choose newest between local and cloud
-    const cloud = normalizeCloudState(snap.data()?.state || {});
-    const cloudTs = stateUpdatedAt(cloud);
-    const localTs = stateUpdatedAt(state);
-
-    if (cloudTs && (!localTs || cloudTs > localTs)) {
-      suppressNextCloudWrite = true;
-      state = cloud;
-      saveLocalState(state);
-      renderAll();
-      showSyncNotice(`✅ Synchro active : ${wsId} (cloud chargé)`);
-    } else {
-      // local is newer -> push it once
-      showSyncNotice(`✅ Synchro active : ${wsId} (local envoyé)`);
-      scheduleCloudSave(true);
-    }
-  }
-
-  // realtime updates
-  unsubSnapshot = onSnapshot(ref, (live) => {
-    const data = live.data();
-    const cloudRaw = data?.state;
-    if (!cloudRaw || !cloudRaw.items) return;
-
-    // ignore our own writes
-    if (data?.updatedBy === DEVICE_ID) return;
-
-    const cloud = normalizeCloudState(cloudRaw);
-    const cloudTs = stateUpdatedAt(cloud);
-    const localTs = stateUpdatedAt(state);
-
-    if (cloudTs && localTs && cloudTs <= localTs) return;
-
-    suppressNextCloudWrite = true;
-    state = cloud;
-    saveLocalState(state);
-    renderAll();
-    showSyncNotice(`🔄 Mise à jour reçue (${wsId})`);
-  });
-}
-
-// --- Firestore refuses `undefined` values: clean them before saving ---
-function cleanUndefined(obj) {
-  if (Array.isArray(obj)) return obj.map(cleanUndefined);
-  if (obj && typeof obj === "object") {
-    const out = {};
-    for (const k of Object.keys(obj)) {
-      const v = obj[k];
-      if (v !== undefined) out[k] = cleanUndefined(v);
-    }
-    return out;
-  }
-  return obj;
-}
-
-function scheduleCloudSave(force = false) {
-  if (!currentWorkspaceId) return;
-
-  if (suppressNextCloudWrite && !force) {
-    suppressNextCloudWrite = false;
-    return;
-  }
-  suppressNextCloudWrite = false;
-
-  if (pendingSaveTimer) clearTimeout(pendingSaveTimer);
-
-  pendingSaveTimer = setTimeout(async () => {
-    try {
-      const ref = doc(fbDb, "workspaces", currentWorkspaceId);
-
-      // 🔥 Nettoyage total compatible Firestore
-      const cleanedState = JSON.parse(JSON.stringify(state));
-
-      await setDoc(ref, {
-        state: cleanedState,
-        updatedAt: serverTimestamp(),
-        updatedBy: DEVICE_ID
-      }, { merge: true });
-
-      showSyncNotice(`✅ Synchro envoyée (${currentWorkspaceId})`);
-    } catch (e) {
-      console.error(e);
-      showSyncNotice(`⚠️ Synchro erreur : ${e?.message || e}`);
-    }
-  }, force ? 0 : 400);
-}
-
-/* ========= MAIN ========= */
 async function main() {
-  await ensureAuth();
-
-  state = loadLocalState();
+  let state = loadState();
+  if (state) enrichStateItemsWithDefaultGrouping(state);
   if (!state) {
     const base = await loadBaseItems();
     state = makeInitialState(base);
-    saveLocalState(state);
-  } else {
-    // ensure meta exists
-    state.meta = state.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: null };
+    enrichStateItemsWithDefaultGrouping(state);
+    saveState(state);
   }
 
-  renderAll();
-
-  // buffer change -> MUST re-render plan
-  $("#bufferInput")?.addEventListener("input", (e) => {
-    state.bufferBoxes = Math.max(0, clampInt(e.target.value, state.bufferBoxes));
-    touchState();
-    saveLocalState(state);
-    renderAll();              // ✅ recalc plan now
-    scheduleCloudSave();
+  // buffer
+  $("#bufferInput")?.addEventListener("change", (e) => {
+    state.bufferBoxes = Math.max(0, clampInt(e.target.value, 5));
+    saveState(state);
+    renderAll(state);
   });
 
-  $("#btnRecalc")?.addEventListener("click", () => renderAll());
+  $("#btnRecalc")?.addEventListener("click", () => renderAll(state));
+  $("#stockSearch")?.addEventListener("input", () => renderStockTable(state));
 
-  $("#stockSearch")?.addEventListener("input", () => renderStockTable());
-
-  $("#btnExport")?.addEventListener("click", () => exportState());
+  $("#btnExport")?.addEventListener("click", () => exportState(state));
 
   $("#fileImport")?.addEventListener("change", async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
-
     try {
-      const data = await importStateFile(f);
-      importStateObject(data);
+      const imported = await importStateFile(f);
+      state = imported;
+      saveState(state);
+      renderAll(state);
       alert("Import réussi.");
     } catch (err) {
-      alert("Import échoué : " + (err?.message || err));
+      alert("Import échoué : " + (err.message || err));
     } finally {
       e.target.value = "";
     }
@@ -947,102 +737,56 @@ async function main() {
     if (!confirm("Réinitialiser le stock & l'historique (retour au fichier items.json) ?")) return;
     const base = await loadBaseItems();
     state = makeInitialState(base);
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave(true);
+    saveState(state);
+    renderAll(state);
   });
 
   $("#btnAssembleBox")?.addEventListener("click", () => {
-    if (!confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”.")) return;
-    assembleBox();
+    if (
+      !confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”.")
+    )
+      return;
+    assembleBox(state);
   });
 
   $("#btnUndo")?.addEventListener("click", () => {
     if (!confirm("Annuler la dernière action ?")) return;
-    undoLast();
+    undoLast(state);
   });
 
   $("#btnClearLog")?.addEventListener("click", () => {
     if (!confirm("Vider l'historique ? (le stock reste inchangé)")) return;
     state.log = [];
-    touchState();
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave();
+    saveState(state);
+    renderAll(state);
   });
 
-  // 2-day queue (no plates/day)
+  // 🖨 Queue 2 jours (si les éléments existent dans index.html)
   $("#btnQueue")?.addEventListener("click", () => {
-    const { day1, day2, total } = buildTwoDayQueue();
-    const fmt = (arr) => arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (${x.perPlate})`).join("<br>") : "<em>—</em>";
+    const platesPerDay = Math.max(1, clampInt($("#platesPerDay")?.value, 8));
+    const { day1, day2, remaining, total } = buildTwoDayQueue(state, platesPerDay);
+
+    const fmt = (arr) =>
+      arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (+${x.perPlate})`).join("<br>") : "<em>—</em>";
+
     const notice = $("#queueNotice");
-    if (!notice) return;
+    if (!notice) {
+      alert("Le bloc d'affichage de file (queueNotice) n'existe pas dans index.html.");
+      return;
+    }
     notice.hidden = false;
     notice.innerHTML = `
-      <strong>File d'impression sur 2 jours</strong><br>
-      <span class="muted">Total plateaux à faire : ${total}</span><br><br>
+      <strong>File d'impression (plateaux/jour : ${platesPerDay})</strong><br><br>
       <strong>Jour 1</strong><br>${fmt(day1)}<br><br>
-      <strong>Jour 2</strong><br>${fmt(day2)}
+      <strong>Jour 2</strong><br>${fmt(day2)}<br><br>
+      <span class="muted">Total plateaux à faire : ${total}. Reste après 2 jours : ${remaining}.</span>
     `;
   });
 
-  // sync buttons
-  $("#btnSyncNew")?.addEventListener("click", async () => {
-    const code = randomSyncCode();
-    $("#syncCode").value = code;
-    await connectWorkspace(code);
-  });
-
-  $("#btnSyncConnect")?.addEventListener("click", async () => {
-    const code = ($("#syncCode").value || "").trim();
-    if (!code) return alert("Entre un code de synchro.");
-    await connectWorkspace(code);
-  });
-
-  // auto-reconnect if saved
-  const savedWs = state?.meta?.workspaceId;
-  if (savedWs) {
-    $("#syncCode").value = savedWs;
-    await connectWorkspace(savedWs);
-  } else {
-    showSyncNotice("🔌 Firebase prêt. Entre un code puis “Connecter” (ou “Nouveau code”).");
-  }
+  renderAll(state);
 }
 
-main().catch((e) => {
-  console.error(e);
-  alert("Erreur au chargement : " + (e?.message || e));
+main().catch((err) => {
+  console.error(err);
+  alert("Erreur au chargement : " + (err.message || err));
 });
-function handlePrintedGroup(groupId) {
-  const groupItems = state.items.filter(it => it.printGroup === groupId);
-  if (!groupItems.length) return;
-
-  const perVar = groupItems[0].perVariantPerPlate || 0;
-  if (!perVar) return alert("perVariantPerPlate manquant pour ce groupe.");
-
-  const platesStr = prompt(
-    `Plateau mix (${groupItems.length} variantes)\n→ +${perVar} sur chaque variante\n\nCombien de plateaux imprimés ?`,
-    "1"
-  );
-  if (platesStr === null) return;
-
-  const plates = Math.max(0, parseInt(platesStr, 10) || 0);
-  if (!plates) return;
-
-  const added = plates * perVar;
-  groupItems.forEach(it => { it.stock += added; });
-
-  pushLog({
-    ts: nowISO(),
-    type: "impression",
-    itemId: groupId,
-    itemName: `Plateau mix (${groupId})`,
-    qty: `+${added} / variante`,
-    detail: `${plates} plateau(x)`
-  });
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-  scheduleCloudSave();
-}
