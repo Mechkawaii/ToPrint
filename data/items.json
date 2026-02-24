@@ -100,19 +100,25 @@
   "perVariantPerPlate": 10
 },
   {
-    "id": "g-n-matrice",
-    "name": "Génématrice",
-    "perBox": 1,
-    "perPlate": 42,
-    "stock": 2
-  },
-  {
-    "id": "g-n-rateur",
-    "name": "Générateur",
-    "perBox": 1,
-    "perPlate": 42,
-    "stock": 0
-  },
+  "id": "g-n-matrice",
+  "name": "Génématrice",
+  "perBox": 1,
+  "perPlate": 42,
+  "stock": 2,
+  "printGroup": "gen_power_mix",
+  "printGroupLabel": "Générateur + Génématrice",
+  "perVariantPerPlate": 21
+},
+{
+  "id": "g-n-rateur",
+  "name": "Générateur",
+  "perBox": 1,
+  "perPlate": 42,
+  "stock": 0,
+  "printGroup": "gen_power_mix",
+  "printGroupLabel": "Générateur + Génématrice",
+  "perVariantPerPlate": 21
+}
   {
     "id": "vierge",
     "name": "Vierge",
