@@ -2,33 +2,27 @@
    - Stock + plan d'impression + historique
    - Ajustements manuels (+/- et quantité custom + raison)
    - Bouton "Imprimé" (plateaux + défectueuses)
-   - Bouton "Boîte assemblée"
+   - Bouton "Boîte assemblée" (déduit une boîte)
    - Undo dernière action (si snapshot dispo)
    - Export / Import
    - Indicateurs CRITIQUE / SOUS TAMPON / OK
-   - File d'impression automatique sur 2 jours (sans plateaux/jour)
-   - ✅ Drawer plein écran : image + infos + actions
-   - ✅ Sauvegardes cloud automatiques : 10 dernières versions + restauration
+   - File d'impression automatique sur 2 jours (SANS plateaux/jour)
+   - Vignettes ./assets/images/<id>.png
    - ✅ Sync Firebase (Firestore) multi-appareils
 */
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import {
-  getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp,
-  collection, query, orderBy, limit, getDocs, deleteDoc
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-/* ========= FIREBASE CONFIG =========
-   ⚠️ Si tu recrées l'app Web dans Firebase, recopie le bloc "firebaseConfig" ici.
-*/
+/* ========= FIREBASE CONFIG (nouvelle app web) ========= */
 const firebaseConfig = {
-  apiKey: "AIzaSyCUcaGdiF6deI5S6JNxwLeCameAWAYEJK",
+  apiKey: "AIzaSyCUcaGdiF6deI56S6JWXwleCameAWAYEJk",
   authDomain: "mechkawaii-to-print.firebaseapp.com",
   projectId: "mechkawaii-to-print",
   storageBucket: "mechkawaii-to-print.firebasestorage.app",
   messagingSenderId: "3742880689",
-  appId: "1:3742880689:web:6f389bd0356df7b6a6818"
+  appId: "COLLE_ICI_L_APPID_EXACT"
 };
 
 const fbApp = initializeApp(firebaseConfig);
@@ -36,7 +30,7 @@ const fbAuth = getAuth(fbApp);
 const fbDb = getFirestore(fbApp);
 
 /* ========= LOCAL STORAGE ========= */
-const STORAGE_KEY = "mechkawaii-production:v4";
+const STORAGE_KEY = "mechkawaii-production:v3";
 const DEVICE_ID_KEY = "mechkawaii-production:deviceId";
 
 /* ========= DOM HELPERS ========= */
@@ -46,14 +40,18 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 /* ========= UTILS ========= */
 function nowISO() { return new Date().toISOString(); }
 function fmtDate(iso) {
-  try { return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }); }
-  catch { return iso; }
+  try {
+    return new Date(iso).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
 }
 function clampInt(n, fallback = 0) {
   const x = Number.parseInt(n, 10);
   return Number.isFinite(x) ? x : fallback;
 }
 function ceilDiv(a, b) { return b > 0 ? Math.ceil(a / b) : 0; }
+
 function imgPathFor(it) { return it.image || `./assets/images/${it.id}.png`; }
 
 function getDeviceId() {
@@ -67,8 +65,8 @@ function getDeviceId() {
 const DEVICE_ID = getDeviceId();
 
 /* ========= STATE ========= */
-let state = null;
-let currentWorkspaceId = null;
+let state = null;                 // {bufferBoxes, items, log, meta}
+let currentWorkspaceId = null;    // code synchro
 let unsubSnapshot = null;
 let pendingSaveTimer = null;
 let suppressNextCloudWrite = false;
@@ -82,24 +80,27 @@ function loadLocalState() {
 function saveLocalState(s) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
 }
+
 async function loadBaseItems() {
   const res = await fetch("./data/items.json", { cache: "no-store" });
   if (!res.ok) throw new Error("Impossible de charger data/items.json");
   return await res.json();
 }
+
 function makeInitialState(items) {
   return {
     bufferBoxes: 5,
     items: items.map((it) => ({ ...it, stock: clampInt(it.stock, 0) })),
     log: [],
     meta: {
-      version: 4,
+      version: 3,
       lastUpdatedAt: nowISO(),
       lastUpdatedBy: DEVICE_ID,
       workspaceId: null
     }
   };
 }
+
 function touchState() {
   state.meta = state.meta || {};
   state.meta.lastUpdatedAt = nowISO();
@@ -116,6 +117,7 @@ function pushLog(entry) {
 /* ========= KPI / PLAN ========= */
 function computeKpis() {
   const items = state.items;
+
   const perBoxItems = items.filter((it) => it.perBox > 0);
   const boxesPossibleByItem = perBoxItems.map((it) => Math.floor(it.stock / it.perBox));
   const boxesPossible = boxesPossibleByItem.length ? Math.min(...boxesPossibleByItem) : 0;
@@ -131,127 +133,41 @@ function computeKpis() {
   return { boxesPossible, bottlenecks, underBuffer, lines: items.length };
 }
 
-/* ========= GROUPED PRINTING =========
-   If an item has:
-     - printGroup: "routes_mix"
-     - perVariantPerPlate: 14
-   ...then 1 "plateau groupé" prints ALL variants in that group.
-   We compute plates based on the MAX deficit among variants (perVariantPerPlate each).
-*/
-function buildPrintGroups() {
-  const targetBoxes = state.bufferBoxes;
-
-  // groupId -> { id, variants: [item], perVariantPerPlate }
-  const map = new Map();
-
-  // Collect items that belong to a printGroup
-  for (const it of state.items) {
-    if (!it.printGroup) continue;
-    const gid = String(it.printGroup);
-
-    const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0); // fallback
-    if (!map.has(gid)) {
-      map.set(gid, { id: gid, variants: [], perVariantPerPlate: perVar });
-    }
-    const g = map.get(gid);
-
-    // keep the max perVariantPerPlate if inconsistent
-    g.perVariantPerPlate = Math.max(g.perVariantPerPlate || 0, perVar || 0);
-    g.variants.push(it);
-  }
-
-  // Compute deficits and plates per group
-  const groups = [];
-  for (const g of map.values()) {
-    const perVar = g.perVariantPerPlate || 0;
-
-    const variantNeeds = g.variants.map((it) => {
-      const targetStock = targetBoxes * (it.perBox || 0);
-      const need = Math.max(0, targetStock - (it.stock || 0));
-      return { id: it.id, name: it.name, need, targetStock, stock: it.stock, perBox: it.perBox };
-    });
-
-    const maxNeed = variantNeeds.length ? Math.max(...variantNeeds.map(v => v.need)) : 0;
-    const plates = (perVar > 0 && maxNeed > 0) ? ceilDiv(maxNeed, perVar) : 0;
-
-    // helper label like "Accidenté (3×14)"
-    const label = `${g.variants[0]?.printGroupLabel || g.id} (${g.variants.length}×${perVar || "?"})`;
-
-    groups.push({
-      id: g.id,
-      label,
-      perVariantPerPlate: perVar,
-      variants: variantNeeds,
-      plates
-    });
-  }
-
-  return groups;
-}
-
-function getGroupById(groupId) {
-  const groups = buildPrintGroups();
-  return groups.find(g => g.id === groupId) || null;
-}
-
-function getGroupForItem(item) {
-  if (!item?.printGroup) return null;
-  return getGroupById(String(item.printGroup));
-}
-
 function buildPrintPlan() {
   const targetBoxes = state.bufferBoxes;
   const items = state.items.filter((it) => it.perBox > 0);
 
-  // Pre-compute grouped plates (printGroup)
-  const groups = buildPrintGroups();
-  const groupById = new Map(groups.map(g => [g.id, g]));
-
   const plan = items.map((it) => {
     const targetStock = targetBoxes * it.perBox;
     const need = Math.max(0, targetStock - it.stock);
-
-    let plates = 0;
-    let produce = 0;
-    let perPlateDisplay = it.perPlate;
-
-    if (it.printGroup) {
-      const g = groupById.get(String(it.printGroup));
-      const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
-      plates = g ? g.plates : 0;
-      produce = plates * perVar;              // produced for THIS variant per group-plate
-      perPlateDisplay = perVar || it.perPlate;
-    } else {
-      plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
-      produce = plates * it.perPlate;
-    }
-
+    const plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
+    const produce = plates * it.perPlate;
     const boxesPossible = Math.floor(it.stock / it.perBox);
 
     const why = [];
     if (need === 0) why.push("OK tampon");
     else why.push("Stock < tampon");
-    if (it.printGroup) why.push("Plateau mix");
 
     return {
       id: it.id,
       name: it.name,
       stock: it.stock,
       perBox: it.perBox,
-      perPlate: perPlateDisplay,
+      perPlate: it.perPlate,
       targetStock,
       need,
       plates,
       produce,
       boxesPossible,
-      printGroup: it.printGroup ? String(it.printGroup) : null,
       why
     };
   });
 
+  // Mark bottlenecks (blocks box assembly)
   const minBoxes = plan.length ? Math.min(...plan.map((p) => p.boxesPossible)) : 0;
   plan.forEach((p) => { if (p.boxesPossible === minBoxes) p.why.unshift("Goulot boîte"); });
 
+  // Sort: bottleneck first, then deficit, then need, then fewer plates
   plan.sort((a, b) => {
     if (a.boxesPossible !== b.boxesPossible) return a.boxesPossible - b.boxesPossible;
     const defA = targetBoxes - a.stock / a.perBox;
@@ -265,52 +181,29 @@ function buildPrintPlan() {
   return plan;
 }
 
-/* ========= 2-DAY QUEUE ========= */
+/* ========= 2-DAY QUEUE (NO plates/day) =========
+   On transforme le plan en "plateaux unitaires", puis on split en 2 jours (moitié / moitié).
+*/
 function buildTwoDayQueue() {
-  const plan = buildPrintPlan();
-
-  // Build queue by "plate action":
-  // - for grouped items: queue by group (one plate prints all variants)
-  // - for non-group items: queue by item
-  const groupPlates = new Map(); // groupId -> plates
-  const groupMeta = new Map();   // groupId -> {label, perVar, variantsCount}
-
-  for (const p of plan) {
-    if (p.printGroup) {
-      if (!groupPlates.has(p.printGroup)) {
-        groupPlates.set(p.printGroup, p.plates);
-        // label
-        const g = getGroupById(p.printGroup);
-        const label = g?.label || `${p.printGroup}`;
-        groupMeta.set(p.printGroup, { label, perVar: p.perPlate, variantsCount: g?.variants?.length || "?" });
-      }
-    }
-  }
+  const plan = buildPrintPlan().filter((p) => p.plates > 0);
 
   const queue = [];
-
-  // grouped plates first (order by biggest plates then label)
-  const grouped = [...groupPlates.entries()]
-    .map(([id, plates]) => ({ id, plates, ...groupMeta.get(id) }))
-    .filter(x => x.plates > 0)
-    .sort((a,b) => (b.plates - a.plates) || String(a.label).localeCompare(String(b.label), "fr"));
-
-  for (const g of grouped) {
-    for (let i = 0; i < g.plates; i++) queue.push({ kind: "group", id: g.id, name: g.label, perPlate: `+${g.perVar} ×${g.variantsCount}` });
-  }
-
-  // non-group items
-  const singles = plan.filter(p => !p.printGroup && p.plates > 0);
-  for (const p of singles) {
-    for (let i = 0; i < p.plates; i++) queue.push({ kind: "item", id: p.id, name: p.name, perPlate: `+${p.perPlate}` });
-  }
+  plan.forEach((p) => {
+    for (let i = 0; i < p.plates; i++) queue.push({ id: p.id, name: p.name, perPlate: p.perPlate });
+  });
 
   const half = Math.ceil(queue.length / 2);
-  return { day1: queue.slice(0, half), day2: queue.slice(half), total: queue.length };
+  return {
+    day1: queue.slice(0, half),
+    day2: queue.slice(half),
+    total: queue.length
+  };
 }
 
 /* ========= ACTIONS ========= */
-function getItemById(id) { return state.items.find((x) => x.id === id); }
+function getItemById(id) {
+  return state.items.find((x) => x.id === id);
+}
 
 function adjustStock(itemId, delta, reason = "ajustement manuel") {
   const it = getItemById(itemId);
@@ -338,63 +231,18 @@ function handlePrinted(itemId) {
   const it = getItemById(itemId);
   if (!it) return;
 
-  // If item belongs to a printGroup, one plateau prints ALL variants in that group.
-  if (it.printGroup) {
-    const g = getGroupForItem(it);
-    const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
-
-    const platesStr = prompt(
-      `Plateau MIX “${g?.label || it.printGroup}”
-` +
-      `→ ajoute ${perVar} pièces à CHAQUE variante
-
-` +
-      `Combien de plateaux imprimés ? (défaut: 1)`,
-      "1"
-    );
-    if (platesStr === null) return;
-    const plates = Math.max(0, clampInt(platesStr, 1));
-    if (plates === 0) return;
-
-    // For grouped plates, defects are usually handled as manual adjustments (simpler & more realistic).
-    const addedEach = plates * perVar;
-
-    const affected = (g?.variants || []).map(v => v.id);
-    for (const vid of affected) {
-      const vIt = getItemById(vid);
-      if (vIt) vIt.stock += addedEach;
-    }
-
-    pushLog({
-      ts: nowISO(),
-      type: "impression",
-      itemId: it.printGroup,
-      itemName: `Plateau mix: ${g?.label || it.printGroup}`,
-      qty: `+${addedEach} / variante`,
-      detail: `${plates} plateau(x) → +${addedEach} sur ${affected.length} variante(s). Défectueux ? ajuste manuellement.`,
-    });
-
-    touchState();
-    saveLocalState(state);
-    renderAll();
-    scheduleCloudSave();
-    return;
-  }
-
-  // Single-item plate (legacy)
-  const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?
-(Par défaut: 1)`, "1");
+  const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
   if (platesStr === null) return;
   const plates = Math.max(0, clampInt(platesStr, 1));
   if (plates === 0) return;
 
-  const defectsStr = prompt(`Pièces défectueuses sur ces ${plates} plateau(x) ?
-(0 si tout est parfait)`, "0");
+  const defectsStr = prompt(`Pièces défectueuses sur ces ${plates} plateau(x) ?\n(0 si tout est parfait)`, "0");
   if (defectsStr === null) return;
   const defects = Math.max(0, clampInt(defectsStr, 0));
 
   const produced = plates * it.perPlate;
   const added = Math.max(0, produced - defects);
+
   it.stock += added;
 
   pushLog({
@@ -414,7 +262,9 @@ function handlePrinted(itemId) {
 
 function canAssembleBox() {
   const blockers = [];
-  state.items.forEach((it) => { if (it.perBox > 0 && it.stock < it.perBox) blockers.push(it.name); });
+  state.items.forEach((it) => {
+    if (it.perBox > 0 && it.stock < it.perBox) blockers.push(it.name);
+  });
   return blockers;
 }
 
@@ -433,7 +283,9 @@ function assembleBox() {
 
   const snapshot = state.items.map((it) => ({ id: it.id, stock: it.stock }));
 
-  state.items.forEach((it) => { if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox); });
+  state.items.forEach((it) => {
+    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox);
+  });
 
   pushLog({
     ts: nowISO(),
@@ -453,8 +305,10 @@ function assembleBox() {
 
 function undoLast() {
   if (!state.log.length) { alert("Rien à annuler."); return; }
+
   const last = state.log[state.log.length - 1];
 
+  // If we have snapshot, restore precisely
   if (last.snapshotBefore) {
     last.snapshotBefore.forEach((s) => {
       const it = getItemById(s.id);
@@ -471,6 +325,7 @@ function undoLast() {
     return;
   }
 
+  // Otherwise invert qty for stock/impression
   if (last.type === "stock" || last.type === "impression") {
     const it = getItemById(last.itemId);
     if (it) {
@@ -492,7 +347,13 @@ function undoLast() {
 }
 
 function exportState() {
-  const payload = { exportedAt: nowISO(), bufferBoxes: state.bufferBoxes, items: state.items, log: state.log, meta: state.meta };
+  const payload = {
+    exportedAt: nowISO(),
+    bufferBoxes: state.bufferBoxes,
+    items: state.items,
+    log: state.log,
+    meta: state.meta
+  };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -515,243 +376,29 @@ function importStateObject(data) {
       perBox: clampInt(it.perBox, 0),
       perPlate: clampInt(it.perPlate, 0),
       stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined,
-      printGroup: it.printGroup ? String(it.printGroup) : undefined,
-      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
-      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined,
-      printGroup: it.printGroup ? String(it.printGroup) : undefined,
-      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
-      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
+      image: it.image ? String(it.image) : undefined
     })),
     log: Array.isArray(data.log) ? data.log : [],
-    meta: data.meta || { version: 4, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
+    meta: data.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
   };
 
   touchState();
   saveLocalState(state);
   renderAll();
+
+  // ✅ Important : après import, on pousse au cloud si connecté
   scheduleCloudSave(true);
 }
 
 function importStateFile(file) {
   return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => { try { resolve(JSON.parse(String(r.result))); } catch (e) { reject(e); } };
-    r.onerror = () => reject(new Error("Impossible de lire le fichier"));
-    r.readAsText(file);
-  });
-}
-
-/* ========= DRAWER (C) ========= */
-const drawer = {
-  el: null,
-  backdrop: null,
-  closeBtn: null,
-  title: null,
-  sub: null,
-  body: null,
-  mode: "piece",     // "piece" | "versions"
-  pieceId: null
-};
-
-function openDrawer() {
-  drawer.backdrop.hidden = false;
-  drawer.el.hidden = false;
-  drawer.el.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-function closeDrawer() {
-  drawer.backdrop.hidden = true;
-  drawer.el.hidden = true;
-  drawer.el.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-  drawer.mode = "piece";
-  drawer.pieceId = null;
-}
-
-function setDrawerHeader(title, sub) {
-  drawer.title.textContent = title || "—";
-  drawer.sub.textContent = sub || "—";
-}
-
-function openPieceDrawer(itemId) {
-  const it = getItemById(itemId);
-  if (!it) return;
-
-  drawer.mode = "piece";
-  drawer.pieceId = itemId;
-
-  const g = it.printGroup ? getGroupForItem(it) : null;
-  const perVar = it.printGroup ? (clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0)) : clampInt(it.perPlate, 0);
-
-  setDrawerHeader(it.name, it.printGroup ? `Plateau mix : ${g?.label || it.printGroup}` : `ID: ${it.id}`);
-
-  const targetStock = state.bufferBoxes * (it.perBox || 0);
-  const need = Math.max(0, targetStock - it.stock);
-
-  // For grouped items, plates is computed at group level (max deficit among variants)
-  let plates = 0;
-  if (it.printGroup) {
-    plates = g ? g.plates : (need > 0 ? ceilDiv(need, perVar) : 0);
-  } else {
-    plates = need > 0 ? ceilDiv(need, perVar) : 0;
-  }
-  const produce = plates * perVar;
-
-  const groupLine = it.printGroup
-    ? `<div class="muted" style="font-size:12px;margin-top:6px">1 plateau ajoute <strong>${perVar}</strong> à <strong>chaque</strong> variante (${g?.variants?.length || "?"} variantes). Défectueux ? ajuste après via “Appliquer”.</div>`
-    : `<div class="muted" style="font-size:12px;margin-top:6px">Clique sur “Imprimé” une fois le plateau terminé.</div>`;
-
-  drawer.body.innerHTML = `
-    <div class="drawer-card">
-      <div class="drawer-piece">
-        <img src="${imgPathFor(it)}" alt="${it.name}" onerror="this.style.display='none'">
-        <div style="flex:1;min-width:0">
-          ${groupLine}
-
-          <div class="drawer-metrics">
-            <div class="drawer-metric"><div class="k">Stock</div><div class="v">${it.stock}</div></div>
-            <div class="drawer-metric"><div class="k">Besoin (tampon)</div><div class="v">${need}</div></div>
-            <div class="drawer-metric"><div class="k">Par boîte</div><div class="v">${it.perBox}</div></div>
-            <div class="drawer-metric"><div class="k">${it.printGroup ? "Par variante / plateau" : "Par plateau"}</div><div class="v">${perVar}</div></div>
-            <div class="drawer-metric"><div class="k">Plateaux</div><div class="v">${plates || "—"}</div></div>
-            <div class="drawer-metric"><div class="k">À produire</div><div class="v">${produce || "—"}</div></div>
-          </div>
-
-          <div class="drawer-actions">
-            <button class="btn btn-accent" id="drawerPrinted">Imprimé</button>
-            <button class="btn btn-ghost" id="drawerMinus">-1</button>
-            <button class="btn btn-ghost" id="drawerPlus">+1</button>
-            <input class="input" id="drawerAdjQty" type="number" step="1" placeholder="+10 / -2">
-            <input class="input" id="drawerAdjReason" type="text" placeholder="raison (ex: défectueux)">
-            <button class="btn" id="drawerApply">Appliquer</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  $("#drawerPrinted")?.addEventListener("click", () => handlePrinted(itemId));
-  $("#drawerMinus")?.addEventListener("click", () => adjustStock(itemId, -1, "ajustement -1"));
-  $("#drawerPlus")?.addEventListener("click", () => adjustStock(itemId, +1, "ajustement +1"));
-  $("#drawerApply")?.addEventListener("click", () => {
-    const qty = clampInt($("#drawerAdjQty")?.value, 0);
-    if (!qty) return alert("Mets une quantité différente de 0 (ex: -2 ou +10).");
-    const reason = ($("#drawerAdjReason")?.value || "").trim() || "ajustement manuel";
-    adjustStock(itemId, qty, reason);
-    $("#drawerAdjQty").value = "";
-    $("#drawerAdjReason").value = "";
-  });
-
-  openDrawer();
-}
-
-/* ========= CLOUD VERSIONING (10) ========= */
-function wsRef() {
-  if (!currentWorkspaceId) return null;
-  return doc(fbDb, "workspaces", currentWorkspaceId);
-}
-function versionsCol() {
-  if (!currentWorkspaceId) return null;
-  return collection(fbDb, "workspaces", currentWorkspaceId, "versions");
-}
-
-async function saveCloudVersion(cleanedState) {
-  const col = versionsCol();
-  if (!col) return;
-
-  const createdAtMs = Date.now();
-  const versionId = String(createdAtMs);
-
-  await setDoc(doc(fbDb, "workspaces", currentWorkspaceId, "versions", versionId), {
-    createdAt: serverTimestamp(),
-    createdAtMs,
-    createdBy: DEVICE_ID,
-    state: cleanedState
-  }, { merge: false });
-
-  // prune to last 10
-  const q = query(col, orderBy("createdAtMs", "desc"), limit(25));
-  const snap = await getDocs(q);
-  const docs = snap.docs;
-  if (docs.length <= 10) return;
-
-  const toDelete = docs.slice(10);
-  await Promise.all(toDelete.map(d => deleteDoc(d.ref)));
-}
-
-async function openVersionsDrawer() {
-  if (!currentWorkspaceId) {
-    alert("Connecte d’abord un code de synchro (workspace).");
-    return;
-  }
-
-  drawer.mode = "versions";
-  drawer.pieceId = null;
-  setDrawerHeader("Versions (cloud)", "Les 10 dernières sauvegardes");
-
-  drawer.body.innerHTML = `
-    <div class="drawer-card">
-      <div class="muted" style="font-size:12px;margin-bottom:10px">
-        Astuce : si tu fais un import “foireux”, tu peux restaurer une version cloud ici.
-      </div>
-      <div id="versionsList" class="muted">Chargement…</div>
-    </div>
-  `;
-
-  openDrawer();
-
-  const col = versionsCol();
-  const q = query(col, orderBy("createdAtMs", "desc"), limit(10));
-  const snap = await getDocs(q);
-
-  const list = $("#versionsList");
-  if (!list) return;
-
-  if (snap.empty) {
-    list.innerHTML = "<em>Aucune version pour l’instant.</em>";
-    return;
-  }
-
-  const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  list.innerHTML = rows.map(r => {
-    const dt = r.createdAtMs ? new Date(r.createdAtMs).toLocaleString("fr-FR", { dateStyle:"short", timeStyle:"short" }) : r.id;
-    return `
-      <div class="drawer-card" style="margin:0 0 10px 0">
-        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
-          <div>
-            <div style="font-weight:700">${dt}</div>
-            <div class="muted" style="font-size:12px">par ${r.createdBy || "—"}</div>
-          </div>
-          <button class="btn" data-restore="${r.id}">Restaurer</button>
-        </div>
-      </div>
-    `;
-  }).join("");
-
-  $$("[data-restore]").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const id = btn.getAttribute("data-restore");
-      if (!confirm("Restaurer cette version ? (ton stock actuel sera remplacé)")) return;
-
-      const vSnap = await getDoc(doc(fbDb, "workspaces", currentWorkspaceId, "versions", id));
-      const v = vSnap.data();
-      if (!v?.state) return alert("Version invalide.");
-
-      suppressNextCloudWrite = true;
-      state = normalizeCloudState(v.state);
-      touchState();
-      saveLocalState(state);
-      renderAll();
-
-      pushLog({ ts: nowISO(), type: "restore", itemId: null, itemName: "—", qty: "", detail: `Restauration version ${id}` });
-      touchState();
-      saveLocalState(state);
-
-      scheduleCloudSave(true);
-      alert("Version restaurée.");
-      closeDrawer();
-    });
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { resolve(JSON.parse(String(reader.result))); }
+      catch (e) { reject(e); }
+    };
+    reader.onerror = () => reject(new Error("Impossible de lire le fichier"));
+    reader.readAsText(file);
   });
 }
 
@@ -784,17 +431,18 @@ function renderPrintTable() {
 
   plan.forEach((p, idx) => {
     const tr = document.createElement("tr");
-    tr.dataset.pieceId = p.id;
 
-    const isCritical = p.stock < p.perBox;
+    const isCritical = p.stock < p.perBox; // can't assemble 1 box
     const isLow = !isCritical && p.stock < state.bufferBoxes * p.perBox;
 
     if (isCritical) tr.classList.add("tr-critical");
     else if (isLow) tr.classList.add("tr-low");
 
-    const badge = isCritical ? `<span class="badge critical">CRITIQUE</span>`
-      : isLow ? `<span class="badge low">SOUS TAMPON</span>`
-      : `<span class="badge ok">OK</span>`;
+    const badge = isCritical
+      ? `<span class="badge critical">CRITIQUE</span>`
+      : isLow
+        ? `<span class="badge low">SOUS TAMPON</span>`
+        : `<span class="badge ok">OK</span>`;
 
     const whyText = p.why.join(" • ");
 
@@ -814,7 +462,8 @@ function renderPrintTable() {
       <td><strong>${idx + 1}</strong></td>
       <td>
         <div class="rowpiece">
-          <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy" onerror="this.style.display='none'">
+          <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy"
+               onerror="this.style.display='none'">
           <span>${p.name}</span>
         </div>
       </td>
@@ -829,19 +478,7 @@ function renderPrintTable() {
   });
 
   $$('[data-action="printed"]', tbody).forEach((b) => {
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      handlePrinted(b.getAttribute("data-id"));
-    });
-  });
-
-  // click row opens drawer (ignore buttons)
-  tbody.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (btn) return;
-    const tr = e.target.closest("tr");
-    const id = tr?.dataset?.pieceId;
-    if (id) openPieceDrawer(id);
+    b.addEventListener("click", () => handlePrinted(b.getAttribute("data-id")));
   });
 }
 
@@ -858,7 +495,6 @@ function renderStockTable() {
 
   rows.forEach((it) => {
     const tr = document.createElement("tr");
-    tr.dataset.pieceId = it.id;
 
     const isCritical = it.perBox > 0 && it.stock < it.perBox;
     const isLow = it.perBox > 0 && !isCritical && it.stock < state.bufferBoxes * it.perBox;
@@ -869,7 +505,8 @@ function renderStockTable() {
     tr.innerHTML = `
       <td>
         <div class="rowpiece">
-          <img class="thumb" src="${imgPathFor(it)}" alt="${it.name}" loading="lazy" onerror="this.style.display='none'">
+          <img class="thumb" src="${imgPathFor(it)}" alt="${it.name}" loading="lazy"
+               onerror="this.style.display='none'">
           <span>${it.name}</span>
         </div>
       </td>
@@ -889,16 +526,17 @@ function renderStockTable() {
     tbody.appendChild(tr);
   });
 
+  // quick +/- buttons
   $$('[data-action="inc"]', tbody).forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); adjustStock(b.dataset.id, +1, "ajustement +1"); })
+    b.addEventListener("click", () => adjustStock(b.dataset.id, +1, "ajustement +1"))
   );
   $$('[data-action="dec"]', tbody).forEach((b) =>
-    b.addEventListener("click", (e) => { e.stopPropagation(); adjustStock(b.dataset.id, -1, "ajustement -1"); })
+    b.addEventListener("click", () => adjustStock(b.dataset.id, -1, "ajustement -1"))
   );
 
+  // apply custom adjustment
   $$('[data-action="apply"]', tbody).forEach((b) => {
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
+    b.addEventListener("click", () => {
       const id = b.dataset.id;
       const row = b.closest("tr");
       const qtyInput = $(`[data-action="adj"][data-id="${id}"]`, row);
@@ -907,7 +545,10 @@ function renderStockTable() {
       const qty = clampInt(qtyInput?.value, 0);
       const reason = (reasonInput?.value || "").trim() || "ajustement manuel";
 
-      if (qty === 0) return alert("Mets une quantité différente de 0 (ex: -2 ou +10).");
+      if (qty === 0) {
+        alert("Mets une quantité différente de 0 (ex: -2 ou +10).");
+        return;
+      }
 
       adjustStock(id, qty, reason);
 
@@ -915,23 +556,15 @@ function renderStockTable() {
       if (reasonInput) reasonInput.value = "";
     });
   });
-
-  // click row opens drawer
-  tbody.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (btn) return;
-    const tr = e.target.closest("tr");
-    const id = tr?.dataset?.pieceId;
-    if (id) openPieceDrawer(id);
-  });
 }
 
 function renderLog() {
   const tbody = $("#logTable tbody");
   if (!tbody) return;
-  tbody.innerHTML = "";
 
+  tbody.innerHTML = "";
   const log = [...state.log].slice(-300).reverse();
+
   log.forEach((entry) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
@@ -946,8 +579,11 @@ function renderLog() {
 }
 
 function renderAll() {
-  $("#bufferInput").value = state.bufferBoxes;
-  $("#bufferLabel").textContent = state.bufferBoxes;
+  const bufferInput = $("#bufferInput");
+  const bufferLabel = $("#bufferLabel");
+
+  if (bufferInput) bufferInput.value = state.bufferBoxes;
+  if (bufferLabel) bufferLabel.textContent = state.bufferBoxes;
 
   renderKpis();
   renderPrintTable();
@@ -962,6 +598,7 @@ function showSyncNotice(text) {
   el.hidden = !text;
   el.textContent = text || "";
 }
+
 function randomSyncCode() {
   const part = () => Math.random().toString(36).slice(2, 6);
   return `${part()}-${part()}-${part()}`;
@@ -982,7 +619,12 @@ async function ensureAuth() {
   });
 }
 
+function stateUpdatedAt(s) {
+  return (s?.meta?.lastUpdatedAt) || "";
+}
+
 function normalizeCloudState(cloud) {
+  // ensure structure
   return {
     bufferBoxes: clampInt(cloud.bufferBoxes, 5),
     items: Array.isArray(cloud.items) ? cloud.items.map((it) => ({
@@ -991,16 +633,12 @@ function normalizeCloudState(cloud) {
       perBox: clampInt(it.perBox, 0),
       perPlate: clampInt(it.perPlate, 0),
       stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined,
-      printGroup: it.printGroup ? String(it.printGroup) : undefined,
-      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
-      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
+      image: it.image ? String(it.image) : undefined
     })) : [],
     log: Array.isArray(cloud.log) ? cloud.log : [],
-    meta: cloud.meta || { version: 4, lastUpdatedAt: nowISO(), lastUpdatedBy: "cloud", workspaceId: currentWorkspaceId || null }
+    meta: cloud.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: "cloud", workspaceId: currentWorkspaceId || null }
   };
 }
-function stateUpdatedAt(s) { return (s?.meta?.lastUpdatedAt) || ""; }
 
 async function connectWorkspace(wsId) {
   if (unsubSnapshot) { unsubSnapshot(); unsubSnapshot = null; }
@@ -1013,9 +651,16 @@ async function connectWorkspace(wsId) {
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
-    await setDoc(ref, { state: JSON.parse(JSON.stringify(state)), updatedAt: serverTimestamp(), updatedBy: DEVICE_ID }, { merge: true });
+    // first device creates cloud doc from local
+    await setDoc(ref, {
+      state,
+      updatedAt: serverTimestamp(),
+      updatedBy: DEVICE_ID
+    }, { merge: true });
+
     showSyncNotice(`✅ Synchro active (workspace créé) : ${wsId}`);
   } else {
+    // choose newest between local and cloud
     const cloud = normalizeCloudState(snap.data()?.state || {});
     const cloudTs = stateUpdatedAt(cloud);
     const localTs = stateUpdatedAt(state);
@@ -1027,21 +672,25 @@ async function connectWorkspace(wsId) {
       renderAll();
       showSyncNotice(`✅ Synchro active : ${wsId} (cloud chargé)`);
     } else {
+      // local is newer -> push it once
       showSyncNotice(`✅ Synchro active : ${wsId} (local envoyé)`);
       scheduleCloudSave(true);
     }
   }
 
+  // realtime updates
   unsubSnapshot = onSnapshot(ref, (live) => {
     const data = live.data();
     const cloudRaw = data?.state;
     if (!cloudRaw || !cloudRaw.items) return;
 
+    // ignore our own writes
     if (data?.updatedBy === DEVICE_ID) return;
 
     const cloud = normalizeCloudState(cloudRaw);
     const cloudTs = stateUpdatedAt(cloud);
     const localTs = stateUpdatedAt(state);
+
     if (cloudTs && localTs && cloudTs <= localTs) return;
 
     suppressNextCloudWrite = true;
@@ -1052,7 +701,20 @@ async function connectWorkspace(wsId) {
   });
 }
 
-/* ========= CLOUD SAVE (with JSON cleanup + versioning) ========= */
+// --- Firestore refuses `undefined` values: clean them before saving ---
+function cleanUndefined(obj) {
+  if (Array.isArray(obj)) return obj.map(cleanUndefined);
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (v !== undefined) out[k] = cleanUndefined(v);
+    }
+    return out;
+  }
+  return obj;
+}
+
 function scheduleCloudSave(force = false) {
   if (!currentWorkspaceId) return;
 
@@ -1068,13 +730,14 @@ function scheduleCloudSave(force = false) {
     try {
       const ref = doc(fbDb, "workspaces", currentWorkspaceId);
 
-      // 🔥 Nettoyage total compatible Firestore (supprime undefined)
+      // 🔥 Nettoyage total compatible Firestore
       const cleanedState = JSON.parse(JSON.stringify(state));
 
-      await setDoc(ref, { state: cleanedState, updatedAt: serverTimestamp(), updatedBy: DEVICE_ID }, { merge: true });
-
-      // ✅ Save a version + prune to 10 (best effort)
-      try { await saveCloudVersion(cleanedState); } catch (e) { console.warn("Versioning:", e); }
+      await setDoc(ref, {
+        state: cleanedState,
+        updatedAt: serverTimestamp(),
+        updatedBy: DEVICE_ID
+      }, { merge: true });
 
       showSyncNotice(`✅ Synchro envoyée (${currentWorkspaceId})`);
     } catch (e) {
@@ -1086,17 +749,6 @@ function scheduleCloudSave(force = false) {
 
 /* ========= MAIN ========= */
 async function main() {
-  // Drawer init
-  drawer.el = $("#pieceDrawer");
-  drawer.backdrop = $("#drawerBackdrop");
-  drawer.closeBtn = $("#drawerClose");
-  drawer.title = $("#drawerTitle");
-  drawer.sub = $("#drawerSub");
-  drawer.body = $("#drawerBody");
-
-  drawer.closeBtn?.addEventListener("click", closeDrawer);
-  drawer.backdrop?.addEventListener("click", closeDrawer);
-
   await ensureAuth();
 
   state = loadLocalState();
@@ -1105,16 +757,18 @@ async function main() {
     state = makeInitialState(base);
     saveLocalState(state);
   } else {
-    state.meta = state.meta || { version: 4, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: null };
+    // ensure meta exists
+    state.meta = state.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: null };
   }
 
   renderAll();
 
+  // buffer change -> MUST re-render plan
   $("#bufferInput")?.addEventListener("input", (e) => {
     state.bufferBoxes = Math.max(0, clampInt(e.target.value, state.bufferBoxes));
     touchState();
     saveLocalState(state);
-    renderAll();
+    renderAll();              // ✅ recalc plan now
     scheduleCloudSave();
   });
 
@@ -1127,6 +781,7 @@ async function main() {
   $("#fileImport")?.addEventListener("change", async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+
     try {
       const data = await importStateFile(f);
       importStateObject(data);
@@ -1148,7 +803,7 @@ async function main() {
   });
 
   $("#btnAssembleBox")?.addEventListener("click", () => {
-    if (!confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté.")) return;
+    if (!confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”.")) return;
     assembleBox();
   });
 
@@ -1166,9 +821,10 @@ async function main() {
     scheduleCloudSave();
   });
 
+  // 2-day queue (no plates/day)
   $("#btnQueue")?.addEventListener("click", () => {
     const { day1, day2, total } = buildTwoDayQueue();
-    const fmt = (arr) => arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (${x.perPlate})`).join("<br>") : "<em>—</em>";
+    const fmt = (arr) => arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (+${x.perPlate})`).join("<br>") : "<em>—</em>";
     const notice = $("#queueNotice");
     if (!notice) return;
     notice.hidden = false;
@@ -1180,7 +836,7 @@ async function main() {
     `;
   });
 
-  // Sync
+  // sync buttons
   $("#btnSyncNew")?.addEventListener("click", async () => {
     const code = randomSyncCode();
     $("#syncCode").value = code;
@@ -1193,10 +849,7 @@ async function main() {
     await connectWorkspace(code);
   });
 
-  // Versions UI
-  $("#btnVersions")?.addEventListener("click", () => openVersionsDrawer());
-
-  // Auto reconnect
+  // auto-reconnect if saved
   const savedWs = state?.meta?.workspaceId;
   if (savedWs) {
     $("#syncCode").value = savedWs;
