@@ -212,10 +212,13 @@ function buildPrintPlan() {
     let perPlateDisplay = it.perPlate;
 
     if (it.printGroup) {
-      const g = groupById.get(String(it.printGroup));
+      const gid = String(it.printGroup);
+      const g = groupById.get(gid);
       const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
+
       plates = g ? g.plates : (need > 0 ? ceilDiv(need, perVar) : 0);
-      produce = plates * perVar;         // per variante
+      // For display on each variant line: production is PER VARIANT
+      produce = plates * perVar;
       perPlateDisplay = perVar || it.perPlate;
     } else {
       plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
@@ -243,11 +246,9 @@ function buildPrintPlan() {
     };
   });
 
-  // Mark bottlenecks (blocks box assembly)
   const minBoxes = plan.length ? Math.min(...plan.map((p) => p.boxesPossible)) : 0;
   plan.forEach((p) => { if (p.boxesPossible === minBoxes) p.why.unshift("Goulot boîte"); });
 
-  // Sort: bottleneck first, then deficit, then need, then fewer plates
   plan.sort((a, b) => {
     if (a.boxesPossible !== b.boxesPossible) return a.boxesPossible - b.boxesPossible;
     const defA = targetBoxes - a.stock / a.perBox;
@@ -330,7 +331,7 @@ function handlePrinted(itemId) {
   const it = getItemById(itemId);
   if (!it) return;
 
-  // Plateau MIX : imprime toutes les variantes du groupe
+  // Plateau MIX: imprime toutes les variantes du groupe
   if (it.printGroup) {
     const g = getGroupForItem(it);
     const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
@@ -347,19 +348,16 @@ function handlePrinted(itemId) {
 
     const addedEach = plates * perVar;
 
-    const affected = (g?.variants || []).map(v => v.id);
-    for (const vid of affected) {
-      const vIt = getItemById(vid);
-      if (vIt) vIt.stock += addedEach;
-    }
+    const groupItems = state.items.filter(x => String(x.printGroup || "") === String(it.printGroup));
+    groupItems.forEach(x => { x.stock = clampInt(x.stock, 0) + addedEach; });
 
     pushLog({
       ts: nowISO(),
       type: "impression",
-      itemId: it.printGroup,
+      itemId: String(it.printGroup),
       itemName: `Plateau mix: ${g?.baseLabel || it.printGroup}`,
       qty: `+${addedEach} / variante`,
-      detail: `${plates} plateau(x) → +${addedEach} sur ${affected.length} variante(s). Défectueux ? ajuste manuellement.`
+      detail: `${plates} plateau(x) → +${addedEach} sur ${groupItems.length} variante(s). Défectueux ? ajuste manuellement.`
     });
 
     touchState();
@@ -369,7 +367,7 @@ function handlePrinted(itemId) {
     return;
   }
 
-  // Plateau "simple" (pièce unique)
+  // Plateau simple (pièce unique)
   const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
   if (platesStr === null) return;
   const plates = Math.max(0, clampInt(platesStr, 1));
@@ -774,7 +772,10 @@ function normalizeCloudState(cloud) {
       perBox: clampInt(it.perBox, 0),
       perPlate: clampInt(it.perPlate, 0),
       stock: clampInt(it.stock, 0),
-      image: it.image ? String(it.image) : undefined
+      image: it.image ? String(it.image) : undefined,
+      printGroup: it.printGroup ? String(it.printGroup) : undefined,
+      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
+      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
     })) : [],
     log: Array.isArray(cloud.log) ? cloud.log : [],
     meta: cloud.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: "cloud", workspaceId: currentWorkspaceId || null }
