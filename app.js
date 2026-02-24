@@ -631,7 +631,7 @@ function renderPrintTable() {
     }
   });
 });
-
+}
 function renderStockTable() {
   const tbody = $("#stockTable tbody");
   if (!tbody) return;
