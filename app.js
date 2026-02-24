@@ -133,32 +133,112 @@ function computeKpis() {
   return { boxesPossible, bottlenecks, underBuffer, lines: items.length };
 }
 
+/* ========= GROUPED PRINTING (PATCH) =========
+   If an item has:
+     - printGroup: "routes_mix"
+     - perVariantPerPlate: 14
+   ...then 1 plateau prints ALL variants in that group.
+   Plates are computed from the MAX deficit among variants.
+*/
+function buildPrintGroups() {
+  const targetBoxes = state.bufferBoxes;
+  const map = new Map(); // groupId -> { id, label, perVar, variants:[item] }
+
+  for (const it of state.items) {
+    if (!it.printGroup) continue;
+    const gid = String(it.printGroup);
+    const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
+
+    if (!map.has(gid)) {
+      map.set(gid, {
+        id: gid,
+        label: it.printGroupLabel ? String(it.printGroupLabel) : gid,
+        perVar,
+        variants: []
+      });
+    }
+    const g = map.get(gid);
+    g.perVar = Math.max(g.perVar || 0, perVar || 0);
+    g.variants.push(it);
+  }
+
+  const groups = [];
+  for (const g of map.values()) {
+    const needs = g.variants.map((it) => {
+      const targetStock = targetBoxes * (it.perBox || 0);
+      const need = Math.max(0, targetStock - (it.stock || 0));
+      return { id: it.id, name: it.name, need, stock: it.stock, perBox: it.perBox, targetStock };
+    });
+    const maxNeed = needs.length ? Math.max(...needs.map(n => n.need)) : 0;
+    const plates = (g.perVar > 0 && maxNeed > 0) ? ceilDiv(maxNeed, g.perVar) : 0;
+
+    groups.push({
+      id: g.id,
+      label: `${g.label} (${g.variants.length}×${g.perVar})`,
+      baseLabel: g.label,
+      perVar: g.perVar,
+      variants: needs,
+      plates
+    });
+  }
+
+  return groups;
+}
+
+function getGroupById(groupId) {
+  const groups = buildPrintGroups();
+  return groups.find(g => g.id === groupId) || null;
+}
+
+function getGroupForItem(it) {
+  if (!it?.printGroup) return null;
+  return getGroupById(String(it.printGroup));
+}
+
 function buildPrintPlan() {
   const targetBoxes = state.bufferBoxes;
   const items = state.items.filter((it) => it.perBox > 0);
 
+  const groups = buildPrintGroups();
+  const groupById = new Map(groups.map(g => [g.id, g]));
+
   const plan = items.map((it) => {
     const targetStock = targetBoxes * it.perBox;
     const need = Math.max(0, targetStock - it.stock);
-    const plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
-    const produce = plates * it.perPlate;
     const boxesPossible = Math.floor(it.stock / it.perBox);
+
+    let plates = 0;
+    let produce = 0;
+    let perPlateDisplay = it.perPlate;
+
+    if (it.printGroup) {
+      const g = groupById.get(String(it.printGroup));
+      const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
+      plates = g ? g.plates : (need > 0 ? ceilDiv(need, perVar) : 0);
+      produce = plates * perVar;         // per variante
+      perPlateDisplay = perVar || it.perPlate;
+    } else {
+      plates = need > 0 ? ceilDiv(need, it.perPlate) : 0;
+      produce = plates * it.perPlate;
+    }
 
     const why = [];
     if (need === 0) why.push("OK tampon");
     else why.push("Stock < tampon");
+    if (it.printGroup) why.push("Plateau mix");
 
     return {
       id: it.id,
       name: it.name,
       stock: it.stock,
       perBox: it.perBox,
-      perPlate: it.perPlate,
+      perPlate: perPlateDisplay,
       targetStock,
       need,
       plates,
       produce,
       boxesPossible,
+      printGroup: it.printGroup ? String(it.printGroup) : null,
       why
     };
   });
@@ -185,19 +265,38 @@ function buildPrintPlan() {
    On transforme le plan en "plateaux unitaires", puis on split en 2 jours (moitié / moitié).
 */
 function buildTwoDayQueue() {
-  const plan = buildPrintPlan().filter((p) => p.plates > 0);
+  const plan = buildPrintPlan();
+
+  const groupPlates = new Map();
+  const groupMeta = new Map();
+
+  for (const p of plan) {
+    if (!p.printGroup) continue;
+    if (!groupPlates.has(p.printGroup)) {
+      groupPlates.set(p.printGroup, p.plates);
+      const g = getGroupById(p.printGroup);
+      groupMeta.set(p.printGroup, { label: g?.label || p.printGroup, perVar: p.perPlate, variantsCount: g?.variants?.length || "?" });
+    }
+  }
 
   const queue = [];
-  plan.forEach((p) => {
-    for (let i = 0; i < p.plates; i++) queue.push({ id: p.id, name: p.name, perPlate: p.perPlate });
-  });
+
+  const grouped = [...groupPlates.entries()]
+    .map(([id, plates]) => ({ id, plates, ...(groupMeta.get(id) || {}) }))
+    .filter(x => x.plates > 0)
+    .sort((a,b) => (b.plates - a.plates) || String(a.label).localeCompare(String(b.label), "fr"));
+
+  for (const g of grouped) {
+    for (let i = 0; i < g.plates; i++) queue.push({ kind: "group", id: g.id, name: g.label, perPlate: `+${g.perVar} ×${g.variantsCount}` });
+  }
+
+  const singles = plan.filter(p => !p.printGroup && p.plates > 0);
+  for (const p of singles) {
+    for (let i = 0; i < p.plates; i++) queue.push({ kind: "item", id: p.id, name: p.name, perPlate: `+${p.perPlate}` });
+  }
 
   const half = Math.ceil(queue.length / 2);
-  return {
-    day1: queue.slice(0, half),
-    day2: queue.slice(half),
-    total: queue.length
-  };
+  return { day1: queue.slice(0, half), day2: queue.slice(half), total: queue.length };
 }
 
 /* ========= ACTIONS ========= */
@@ -231,6 +330,46 @@ function handlePrinted(itemId) {
   const it = getItemById(itemId);
   if (!it) return;
 
+  // Plateau MIX : imprime toutes les variantes du groupe
+  if (it.printGroup) {
+    const g = getGroupForItem(it);
+    const perVar = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
+
+    const platesStr = prompt(
+      `Plateau MIX “${g?.baseLabel || it.printGroup}”\n` +
+      `→ ajoute ${perVar} pièces à CHAQUE variante\n\n` +
+      `Combien de plateaux imprimés ? (défaut: 1)`,
+      "1"
+    );
+    if (platesStr === null) return;
+    const plates = Math.max(0, clampInt(platesStr, 1));
+    if (plates === 0) return;
+
+    const addedEach = plates * perVar;
+
+    const affected = (g?.variants || []).map(v => v.id);
+    for (const vid of affected) {
+      const vIt = getItemById(vid);
+      if (vIt) vIt.stock += addedEach;
+    }
+
+    pushLog({
+      ts: nowISO(),
+      type: "impression",
+      itemId: it.printGroup,
+      itemName: `Plateau mix: ${g?.baseLabel || it.printGroup}`,
+      qty: `+${addedEach} / variante`,
+      detail: `${plates} plateau(x) → +${addedEach} sur ${affected.length} variante(s). Défectueux ? ajuste manuellement.`
+    });
+
+    touchState();
+    saveLocalState(state);
+    renderAll();
+    scheduleCloudSave();
+    return;
+  }
+
+  // Plateau "simple" (pièce unique)
   const platesStr = prompt(`Combien de plateaux imprimés pour “${it.name}” ?\n(Par défaut: 1)`, "1");
   if (platesStr === null) return;
   const plates = Math.max(0, clampInt(platesStr, 1));
@@ -242,7 +381,6 @@ function handlePrinted(itemId) {
 
   const produced = plates * it.perPlate;
   const added = Math.max(0, produced - defects);
-
   it.stock += added;
 
   pushLog({
@@ -377,7 +515,10 @@ function importStateObject(data) {
       perPlate: clampInt(it.perPlate, 0),
       stock: clampInt(it.stock, 0),
       image: it.image ? String(it.image) : undefined
-    })),
+    
+      printGroup: it.printGroup ? String(it.printGroup) : undefined,
+      perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
+      printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined,})),
     log: Array.isArray(data.log) ? data.log : [],
     meta: data.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
   };
@@ -824,7 +965,7 @@ async function main() {
   // 2-day queue (no plates/day)
   $("#btnQueue")?.addEventListener("click", () => {
     const { day1, day2, total } = buildTwoDayQueue();
-    const fmt = (arr) => arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (+${x.perPlate})`).join("<br>") : "<em>—</em>";
+    const fmt = (arr) => arr.length ? arr.map((x, i) => `${i + 1}. ${x.name} (${x.perPlate})`).join("<br>") : "<em>—</em>";
     const notice = $("#queueNotice");
     if (!notice) return;
     notice.hidden = false;
