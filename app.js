@@ -619,13 +619,8 @@ function renderPrintTable() {
   });
 
   $$('[data-action="printed"]', tbody).forEach((b) => {
-    btn.addEventListener("click", () => {
-  if (item.printGroup) {
-    handlePrintedGroup(item.printGroup);
-  } else {
-    handlePrinted(item.id);
-  }
-});
+    b.addEventListener("click", () => handlePrinted(b.getAttribute("data-id")));
+  });
 }
 
 function renderStockTable() {
@@ -1009,43 +1004,3 @@ main().catch((e) => {
   console.error(e);
   alert("Erreur au chargement : " + (e?.message || e));
 });
-function handlePrintedGroup(groupId) {
-  const groupItems = state.items.filter(
-    it => it.printGroup === groupId
-  );
-  if (!groupItems.length) return;
-
-  const perVar = groupItems[0].perVariantPerPlate;
-  if (!perVar) return alert("perVariantPerPlate manquant");
-
-  const platesStr = prompt(
-    `Plateau mix (${groupItems.length} variantes)\n` +
-    `→ +${perVar} sur chaque variante\n\n` +
-    `Combien de plateaux imprimés ?`,
-    "1"
-  );
-  if (platesStr === null) return;
-
-  const plates = Math.max(0, parseInt(platesStr, 10) || 0);
-  if (!plates) return;
-
-  const added = plates * perVar;
-
-  groupItems.forEach(it => {
-    it.stock += added;
-  });
-
-  pushLog({
-    ts: nowISO(),
-    type: "impression",
-    itemId: groupId,
-    itemName: `Plateau mix (${groupId})`,
-    qty: `+${added} / variante`,
-    detail: `${plates} plateau(x)`
-  });
-
-  touchState();
-  saveLocalState(state);
-  renderAll();
-  scheduleCloudSave();
-}
