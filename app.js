@@ -645,21 +645,23 @@ function renderPrintTable() {
       const producePerVar = g.plates * g.perVar;
       const produceText = producePerVar === 0 ? "—" : `+${producePerVar} / variante`;
 
-      // Variants detail tooltip
-      const varDetail = variantItems.map(it => `${it.name}: ${it.stock}`).join(" • ");
+      const firstId = variantItems[0]?.id || "";
+      const totalStock = variantItems.reduce((sum, it) => sum + (it.stock || 0), 0);
 
       const btn = g.plates === 0
         ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
-        : `<button class="btn btn-accent" data-action="printed" data-id="${variantItems[0]?.id}" data-group="${row.groupId}">Imprimé</button>`;
+        : `<button class="btn btn-accent" data-action="printed" data-id="${firstId}" data-group="${row.groupId}">Imprimé</button>`;
 
       tr.innerHTML = `
         <td><strong>${idx + 1}</strong></td>
         <td>
           <div class="rowpiece">
-            <span><strong>${g.baseLabel}</strong><br><span class="muted small">${varDetail}</span></span>
+            <img class="thumb" src="${imgPathFor({ id: firstId })}" alt="${g.baseLabel}" loading="lazy"
+                 onerror="this.style.display='none'">
+            <span>${g.baseLabel}</span>
           </div>
         </td>
-        <td><span class="muted small">${variantItems.map(it => it.stock).join(" / ")}</span></td>
+        <td>${totalStock}</td>
         <td>${needPill} <span class="muted small">/ cible ${targetStock}</span></td>
         <td>${platesText}</td>
         <td>${produceText}</td>
