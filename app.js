@@ -68,6 +68,34 @@ function makeInitialState(items) {
   };
 }
 
+function reconcileItemsKeepStock(currentItems, baseItems) {
+  const byId = new Map((currentItems || []).map(it => [String(it.id), it]));
+  const merged = [];
+
+  for (const b of (baseItems || [])) {
+    const id = String(b.id);
+    const cur = byId.get(id);
+
+    // Keep stock from current state if present, otherwise use base stock
+    const stock = cur ? clampInt(cur.stock, 0) : clampInt(b.stock, 0);
+
+    merged.push({
+      ...cur,
+      ...b,
+      id,
+      stock,
+      // keep user-supplied image override if present in current state
+      image: (cur && cur.image) ? cur.image : b.image,
+    });
+    byId.delete(id);
+  }
+
+  // Keep any extra custom items that aren't in base anymore
+  for (const extra of byId.values()) merged.push(extra);
+
+  return merged;
+}
+
 function getItem(state, id) {
   return state.items.find((x) => x.id === id);
 }
@@ -542,15 +570,21 @@ function renderAll(state) {
   renderLog(state);
 }
 
+
 async function main() {
+  const base = await loadBaseItems();
+
   let state = loadState();
   if (!state) {
-    const base = await loadBaseItems();
     state = makeInitialState(base);
+    saveState(state);
+  } else {
+    // 🔁 Keep your stock counts, but refresh definitions from items.json (incl. printGroup, perVariantPerPlate)
+    state.items = reconcileItemsKeepStock(state.items, base);
     saveState(state);
   }
 
-  // buffer
+// buffer
   $("#bufferInput")?.addEventListener("change", (e) => {
     state.bufferBoxes = Math.max(0, clampInt(e.target.value, 5));
     saveState(state);
