@@ -589,52 +589,128 @@ function renderPrintTable() {
 
   tbody.innerHTML = "";
   const plan = buildPrintPlan();
+  const groups = buildPrintGroups();
+  const groupById = new Map(groups.map(g => [g.id, g]));
 
-  plan.forEach((p, idx) => {
+  // Build display rows:
+  // - For mixed groups: one row per group (skip individual variant rows)
+  // - For solo items: one row per item
+  const seenGroups = new Set();
+  const rows = []; // { kind: "group"|"item", data }
+
+  for (const p of plan) {
+    if (p.printGroup) {
+      if (!seenGroups.has(p.printGroup)) {
+        seenGroups.add(p.printGroup);
+        const g = groupById.get(p.printGroup);
+        rows.push({ kind: "group", groupId: p.printGroup, g });
+      }
+      // skip subsequent variant rows for same group
+    } else {
+      rows.push({ kind: "item", p });
+    }
+  }
+
+  rows.forEach((row, idx) => {
     const tr = document.createElement("tr");
 
-    const isCritical = p.stock < p.perBox; // can't assemble 1 box
-    const isLow = !isCritical && p.stock < state.bufferBoxes * p.perBox;
+    if (row.kind === "group") {
+      const g = row.g;
+      if (!g) return;
 
-    if (isCritical) tr.classList.add("tr-critical");
-    else if (isLow) tr.classList.add("tr-low");
+      // Compute group-level status from its variants
+      const variantItems = state.items.filter(it => String(it.printGroup || "") === row.groupId);
+      const minStock = variantItems.length ? Math.min(...variantItems.map(it => it.stock)) : 0;
+      const minPerBox = variantItems.length ? Math.min(...variantItems.map(it => it.perBox || 0)) : 0;
+      const targetStock = state.bufferBoxes * minPerBox;
+      const maxNeed = variantItems.length ? Math.max(...variantItems.map(it => Math.max(0, state.bufferBoxes * (it.perBox || 0) - it.stock))) : 0;
 
-    const badge = isCritical
-      ? `<span class="badge critical">CRITIQUE</span>`
-      : isLow
-        ? `<span class="badge low">SOUS TAMPON</span>`
-        : `<span class="badge ok">OK</span>`;
+      const isCritical = minPerBox > 0 && minStock < minPerBox;
+      const isLow = !isCritical && minPerBox > 0 && minStock < targetStock;
 
-    const whyText = p.why.join(" • ");
+      if (isCritical) tr.classList.add("tr-critical");
+      else if (isLow) tr.classList.add("tr-low");
 
-    const needPill = (p.need === 0)
-      ? `<span class="pill ok">OK</span>`
-      : `<span class="pill bad">Manque ${p.need}</span>`;
+      const badge = isCritical
+        ? `<span class="badge critical">CRITIQUE</span>`
+        : isLow
+          ? `<span class="badge low">SOUS TAMPON</span>`
+          : `<span class="badge ok">OK</span>`;
 
-    const platesText = p.plates === 0 ? "—" : String(p.plates);
-    const produceText = p.produce === 0 ? "—" : `+${p.produce}`;
+      const needPill = maxNeed === 0
+        ? `<span class="pill ok">OK</span>`
+        : `<span class="pill bad">Manque ${maxNeed}</span>`;
 
-    const btn =
-      p.plates === 0
+      const platesText = g.plates === 0 ? "—" : String(g.plates);
+      const producePerVar = g.plates * g.perVar;
+      const produceText = producePerVar === 0 ? "—" : `+${producePerVar} / variante`;
+
+      // Variants detail tooltip
+      const varDetail = variantItems.map(it => `${it.name}: ${it.stock}`).join(" • ");
+
+      const btn = g.plates === 0
+        ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
+        : `<button class="btn btn-accent" data-action="printed" data-id="${variantItems[0]?.id}" data-group="${row.groupId}">Imprimé</button>`;
+
+      tr.innerHTML = `
+        <td><strong>${idx + 1}</strong></td>
+        <td>
+          <div class="rowpiece">
+            <span><strong>${g.baseLabel}</strong><br><span class="muted small">${varDetail}</span></span>
+          </div>
+        </td>
+        <td><span class="muted small">${variantItems.map(it => it.stock).join(" / ")}</span></td>
+        <td>${needPill} <span class="muted small">/ cible ${targetStock}</span></td>
+        <td>${platesText}</td>
+        <td>${produceText}</td>
+        <td class="muted">${badge} Plateau mix</td>
+        <td>${btn}</td>
+      `;
+
+    } else {
+      const p = row.p;
+      const isCritical = p.stock < p.perBox;
+      const isLow = !isCritical && p.stock < state.bufferBoxes * p.perBox;
+
+      if (isCritical) tr.classList.add("tr-critical");
+      else if (isLow) tr.classList.add("tr-low");
+
+      const badge = isCritical
+        ? `<span class="badge critical">CRITIQUE</span>`
+        : isLow
+          ? `<span class="badge low">SOUS TAMPON</span>`
+          : `<span class="badge ok">OK</span>`;
+
+      const whyText = p.why.filter(w => w !== "Plateau mix").join(" • ");
+      const needPill = p.need === 0
+        ? `<span class="pill ok">OK</span>`
+        : `<span class="pill bad">Manque ${p.need}</span>`;
+
+      const platesText = p.plates === 0 ? "—" : String(p.plates);
+      const produceText = p.produce === 0 ? "—" : `+${p.produce}`;
+
+      const btn = p.plates === 0
         ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
         : `<button class="btn btn-accent" data-action="printed" data-id="${p.id}">Imprimé</button>`;
 
-    tr.innerHTML = `
-      <td><strong>${idx + 1}</strong></td>
-      <td>
-        <div class="rowpiece">
-          <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy"
-               onerror="this.style.display='none'">
-          <span>${p.name}</span>
-        </div>
-      </td>
-      <td>${p.stock}</td>
-      <td>${needPill} <span class="muted small">/ cible ${p.targetStock}</span></td>
-      <td>${platesText}</td>
-      <td>${produceText}</td>
-      <td class="muted">${badge} <span class="muted"> ${whyText}</span></td>
-      <td>${btn}</td>
-    `;
+      tr.innerHTML = `
+        <td><strong>${idx + 1}</strong></td>
+        <td>
+          <div class="rowpiece">
+            <img class="thumb" src="${imgPathFor({ id: p.id })}" alt="${p.name}" loading="lazy"
+                 onerror="this.style.display='none'">
+            <span>${p.name}</span>
+          </div>
+        </td>
+        <td>${p.stock}</td>
+        <td>${needPill} <span class="muted small">/ cible ${p.targetStock}</span></td>
+        <td>${platesText}</td>
+        <td>${produceText}</td>
+        <td class="muted">${badge} <span class="muted">${whyText}</span></td>
+        <td>${btn}</td>
+      `;
+    }
+
     tbody.appendChild(tr);
   });
 
