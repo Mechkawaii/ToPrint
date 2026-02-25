@@ -501,12 +501,29 @@ function exportState() {
   URL.revokeObjectURL(url);
 }
 
-function importStateObject(data) {
+async function importStateObject(data) {
   if (!data || !Array.isArray(data.items)) throw new Error("Fichier invalide : items manquants");
 
-  state = {
-    bufferBoxes: clampInt(data.bufferBoxes, 5),
-    items: data.items.map((it) => ({
+  // ✅ Toujours recharger items.json comme source de vérité pour la config
+  // Seul le stock est restauré depuis l'export — perPlate, printGroup, etc. viennent du fichier
+  let baseItems = null;
+  try {
+    const res = await fetch("./data/items.json", { cache: "no-store" });
+    if (res.ok) baseItems = await res.json();
+  } catch (_) { /* fallback: on utilisera les données de l'export */ }
+
+  const importedById = new Map(data.items.map(it => [String(it.id), it]));
+
+  let mergedItems;
+  if (baseItems) {
+    // Config depuis items.json, stock depuis l'export (ou 0 si absent)
+    mergedItems = baseItems.map(base => ({
+      ...base,
+      stock: clampInt((importedById.get(String(base.id)) || {}).stock, 0)
+    }));
+  } else {
+    // Fallback si items.json inaccessible : on prend l'export tel quel
+    mergedItems = data.items.map((it) => ({
       id: String(it.id),
       name: String(it.name),
       perBox: clampInt(it.perBox, 0),
@@ -516,7 +533,12 @@ function importStateObject(data) {
       printGroup: it.printGroup ? String(it.printGroup) : undefined,
       perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
       printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
-    })),
+    }));
+  }
+
+  state = {
+    bufferBoxes: clampInt(data.bufferBoxes, 5),
+    items: mergedItems,
     log: Array.isArray(data.log) ? data.log : [],
     meta: data.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: currentWorkspaceId || null }
   };
@@ -926,7 +948,7 @@ async function main() {
 
     try {
       const data = await importStateFile(f);
-      importStateObject(data);
+      await importStateObject(data);
       alert("Import réussi.");
     } catch (err) {
       alert("Import échoué : " + (err?.message || err));
