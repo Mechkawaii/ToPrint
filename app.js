@@ -396,22 +396,22 @@ function handlePrinted(itemId) {
   scheduleCloudSave();
 }
 
-function canAssembleBox() {
+function canAssembleBoxes(qty) {
   const blockers = [];
   state.items.forEach((it) => {
-    if (it.perBox > 0 && it.stock < it.perBox) blockers.push(it.name);
+    if (it.perBox > 0 && it.stock < it.perBox * qty) blockers.push(`${it.name} (stock: ${it.stock}, besoin: ${it.perBox * qty})`);
   });
   return blockers;
 }
 
-function assembleBox() {
-  const blockers = canAssembleBox();
+function assembleBox(qty = 1) {
+  const blockers = canAssembleBoxes(qty);
   const notice = $("#assembleNotice");
 
   if (blockers.length) {
     if (notice) {
       notice.hidden = false;
-      notice.textContent = `Impossible d’assembler une boîte : stock insuffisant pour ${blockers.slice(0, 4).join(", ")}${blockers.length > 4 ? "…" : ""}.`;
+      notice.textContent = `Impossible d’assembler ${qty} boîte(s) : stock insuffisant pour ${blockers.slice(0, 4).join(", ")}${blockers.length > 4 ? "…" : ""}.`;
     }
     return;
   }
@@ -420,7 +420,7 @@ function assembleBox() {
   const snapshot = state.items.map((it) => ({ id: it.id, stock: it.stock }));
 
   state.items.forEach((it) => {
-    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox);
+    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox * qty);
   });
 
   pushLog({
@@ -428,8 +428,8 @@ function assembleBox() {
     type: "boîte",
     itemId: null,
     itemName: "Boîte assemblée",
-    qty: 1,
-    detail: "Décrément du stock selon quantités par boîte",
+    qty,
+    detail: `${qty} boîte(s) assemblée(s) — décrément du stock selon quantités par boîte`,
     snapshotBefore: snapshot
   });
 
@@ -1041,8 +1041,11 @@ async function main() {
   });
 
   $("#btnAssembleBox")?.addEventListener("click", () => {
-    if (!confirm("Confirmer : une boîte assemblée ?\n→ le stock de chaque pièce sera décrémenté selon “par boîte”.")) return;
-    assembleBox();
+    const qtyStr = prompt("Combien de boîtes assemblées ?", "1");
+    if (qtyStr === null) return;
+    const qty = Math.max(1, parseInt(qtyStr, 10) || 1);
+    if (!confirm(`Confirmer : ${qty} boîte(s) assemblée(s) ?\n→ le stock de chaque pièce sera décrémenté de ${qty}× les quantités par boîte.`)) return;
+    assembleBox(qty);
   });
 
   $("#btnUndo")?.addEventListener("click", () => {
