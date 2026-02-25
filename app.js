@@ -36,13 +36,12 @@ function imgPathFor(it) {
 }
 
 async function loadBaseItems() {
-  // ✅ Prefer root-level items.json (simpler on GitHub Pages)
-  // Fallback to ./data/items.json for older repo layouts.
+  // Prefer root items.json, fallback to legacy ./data/items.json
   let res = await fetch("./items.json", { cache: "no-store" });
   if (!res.ok) {
     res = await fetch("./data/items.json", { cache: "no-store" });
   }
-  if (!res.ok) throw new Error("Impossible de charger items.json (ou data/items.json)");
+  if (!res.ok) throw new Error("Impossible de charger items.json");
   return await res.json();
 }
 
@@ -68,33 +67,37 @@ function makeInitialState(items) {
   };
 }
 
-function reconcileItemsKeepStock(currentItems, baseItems) {
-  const byId = new Map((currentItems || []).map(it => [String(it.id), it]));
-  const merged = [];
 
-  for (const b of (baseItems || [])) {
-    const id = String(b.id);
-    const cur = byId.get(id);
+function mergeBaseIntoState(baseItems) {
+  // Merge base definitions into current state while preserving user stocks.
+  // Key = id.
+  const baseById = new Map(baseItems.map(it => [String(it.id), it]));
+  const seen = new Set();
 
-    // Keep stock from current state if present, otherwise use base stock
-    const stock = cur ? clampInt(cur.stock, 0) : clampInt(b.stock, 0);
+  // Update existing items
+  state.items = state.items.map((it) => {
+    const id = String(it.id);
+    const base = baseById.get(id);
+    seen.add(id);
+    if (!base) return it;
 
-    merged.push({
-      ...cur,
-      ...b,
-      id,
-      stock,
-      // keep user-supplied image override if present in current state
-      image: (cur && cur.image) ? cur.image : b.image,
-    });
-    byId.delete(id);
+    return {
+      ...base,
+      // preserve current stock and any user tweaks
+      stock: clampInt(it.stock, clampInt(base.stock, 0)),
+      // preserve image override if user has one
+      image: (it.image !== undefined && it.image !== null && it.image !== "") ? it.image : base.image,
+    };
+  });
+
+  // Add any missing items from base
+  for (const base of baseItems) {
+    const id = String(base.id);
+    if (seen.has(id)) continue;
+    state.items.push({ ...base, stock: clampInt(base.stock, 0) });
   }
-
-  // Keep any extra custom items that aren't in base anymore
-  for (const extra of byId.values()) merged.push(extra);
-
-  return merged;
 }
+
 
 function getItem(state, id) {
   return state.items.find((x) => x.id === id);
@@ -570,21 +573,15 @@ function renderAll(state) {
   renderLog(state);
 }
 
-
 async function main() {
-  const base = await loadBaseItems();
-
   let state = loadState();
   if (!state) {
+    const base = await loadBaseItems();
     state = makeInitialState(base);
-    saveState(state);
-  } else {
-    // 🔁 Keep your stock counts, but refresh definitions from items.json (incl. printGroup, perVariantPerPlate)
-    state.items = reconcileItemsKeepStock(state.items, base);
     saveState(state);
   }
 
-// buffer
+  // buffer
   $("#bufferInput")?.addEventListener("change", (e) => {
     state.bufferBoxes = Math.max(0, clampInt(e.target.value, 5));
     saveState(state);
