@@ -1,124 +1,131 @@
 [
   {
-  "id": "route-droite",
-  "name": "Route droite",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 18,
-  "printGroup": "routes_mix",
-  "printGroupLabel": "Routes",
-  "perVariantPerPlate": 14
-},
-{
-  "id": "route-angle",
-  "name": "Route angle",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 18,
-  "printGroup": "routes_mix",
-  "printGroupLabel": "Routes",
-  "perVariantPerPlate": 14
-},
-{
-  "id": "route-croisement",
-  "name": "Route croisement",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 18,
-  "printGroup": "routes_mix",
-  "printGroupLabel": "Routes",
-  "perVariantPerPlate": 14
-},
+    "id": "route-droite",
+    "name": "Route droite",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 18,
+    "printGroup": "routes_mix",
+    "printGroupLabel": "Routes (droite/angle/croisement)",
+    "perVariantPerPlate": 14
+  },
   {
-  "id": "accident-1",
-  "name": "Accidenté_1",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 4,
-  "printGroup": "accidente_mix",
-  "printGroupLabel": "Accidenté",
-  "perVariantPerPlate": 14
-},
-{
-  "id": "accident-2",
-  "name": "Accidenté_2",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 4,
-  "printGroup": "accidente_mix",
-  "printGroupLabel": "Accidenté",
-  "perVariantPerPlate": 14
-},
-{
-  "id": "accident-3",
-  "name": "Accidenté_3",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 4,
-  "printGroup": "accidente_mix",
-  "printGroupLabel": "Accidenté",
-  "perVariantPerPlate": 14
-},
+    "id": "route-angle",
+    "name": "Route angle",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 18,
+    "printGroup": "routes_mix",
+    "printGroupLabel": "Routes (droite/angle/croisement)",
+    "perVariantPerPlate": 14
+  },
   {
-  "id": "ville-1",
-  "name": "Ville_1",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 32,
-  "printGroup": "villes_mix",
-  "printGroupLabel": "Villes",
-  "perVariantPerPlate": 10
-},
-{
-  "id": "ville-2",
-  "name": "Ville_2",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 32,
-  "printGroup": "villes_mix",
-  "printGroupLabel": "Villes",
-  "perVariantPerPlate": 10
-},
-{
-  "id": "ville-3",
-  "name": "Ville_3",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 32,
-  "printGroup": "villes_mix",
-  "printGroupLabel": "Villes",
-  "perVariantPerPlate": 10
-},
-{
-  "id": "ville-4",
-  "name": "Ville_4",
-  "perBox": 2,
-  "perPlate": 42,
-  "stock": 32,
-  "printGroup": "villes_mix",
-  "printGroupLabel": "Villes",
-  "perVariantPerPlate": 10
-},
+    "id": "route-croisement",
+    "name": "Route croisement",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 18,
+    "printGroup": "routes_mix",
+    "printGroupLabel": "Routes (droite/angle/croisement)",
+    "perVariantPerPlate": 14
+  },
   {
-  "id": "g-n-matrice",
-  "name": "Génématrice",
-  "perBox": 1,
-  "perPlate": 42,
-  "stock": 2,
-  "printGroup": "gen_power_mix",
-  "printGroupLabel": "Générateur + Génématrice",
-  "perVariantPerPlate": 21
-},
-{
-  "id": "g-n-rateur",
-  "name": "Générateur",
-  "perBox": 1,
-  "perPlate": 42,
-  "stock": 0,
-  "printGroup": "gen_power_mix",
-  "printGroupLabel": "Générateur + Génématrice",
-  "perVariantPerPlate": 21
-},
+    "id": "localisation",
+    "name": "Localisation",
+    "perBox": 1,
+    "perPlate": 42,
+    "stock": 23
+  },
+  {
+    "id": "accident-1",
+    "name": "Accidenté_1",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 4,
+    "printGroup": "accidente_mix",
+    "printGroupLabel": "Accidentés (3 variantes)",
+    "perVariantPerPlate": 14
+  },
+  {
+    "id": "accident-2",
+    "name": "Accidenté_2",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 4,
+    "printGroup": "accidente_mix",
+    "printGroupLabel": "Accidentés (3 variantes)",
+    "perVariantPerPlate": 14
+  },
+  {
+    "id": "accident-3",
+    "name": "Accidenté_3",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 4,
+    "printGroup": "accidente_mix",
+    "printGroupLabel": "Accidentés (3 variantes)",
+    "perVariantPerPlate": 14
+  },
+  {
+    "id": "ville-1",
+    "name": "Ville_1",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 32,
+    "printGroup": "villes_mix",
+    "printGroupLabel": "Villes (4 variantes)",
+    "perVariantPerPlate": 10
+  },
+  {
+    "id": "ville-2",
+    "name": "Ville_2",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 32,
+    "printGroup": "villes_mix",
+    "printGroupLabel": "Villes (4 variantes)",
+    "perVariantPerPlate": 10
+  },
+  {
+    "id": "ville-3",
+    "name": "Ville_3",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 32,
+    "printGroup": "villes_mix",
+    "printGroupLabel": "Villes (4 variantes)",
+    "perVariantPerPlate": 10
+  },
+  {
+    "id": "ville-4",
+    "name": "Ville_4",
+    "perBox": 2,
+    "perPlate": 42,
+    "stock": 32,
+    "printGroup": "villes_mix",
+    "printGroupLabel": "Villes (4 variantes)",
+    "perVariantPerPlate": 10
+  },
+  {
+    "id": "g-n-matrice",
+    "name": "Génématrice",
+    "perBox": 1,
+    "perPlate": 42,
+    "stock": 2,
+    "printGroup": "gen_power_mix",
+    "printGroupLabel": "Générateur + Génématrice",
+    "perVariantPerPlate": 21
+  },
+  {
+    "id": "g-n-rateur",
+    "name": "Générateur",
+    "perBox": 1,
+    "perPlate": 42,
+    "stock": 0,
+    "printGroup": "gen_power_mix",
+    "printGroupLabel": "Générateur + Génématrice",
+    "perVariantPerPlate": 21
+  },
   {
     "id": "vierge",
     "name": "Vierge",
