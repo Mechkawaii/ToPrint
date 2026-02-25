@@ -648,9 +648,7 @@ function renderPrintTable() {
       const firstId = variantItems[0]?.id || "";
       const totalStock = variantItems.reduce((sum, it) => sum + (it.stock || 0), 0);
 
-      const btn = g.plates === 0
-        ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
-        : `<button class="btn btn-accent" data-action="printed" data-id="${firstId}" data-group="${row.groupId}">Imprimé</button>`;
+      const btn = `<button class="btn btn-accent" data-action="printed" data-id="${firstId}" data-group="${row.groupId}">Imprimé</button>`;
 
       tr.innerHTML = `
         <td><strong>${idx + 1}</strong></td>
@@ -691,9 +689,7 @@ function renderPrintTable() {
       const platesText = p.plates === 0 ? "—" : String(p.plates);
       const produceText = p.produce === 0 ? "—" : `+${p.produce}`;
 
-      const btn = p.plates === 0
-        ? `<button class="btn btn-ghost" disabled>Rien à faire</button>`
-        : `<button class="btn btn-accent" data-action="printed" data-id="${p.id}">Imprimé</button>`;
+      const btn = `<button class="btn btn-accent" data-action="printed" data-id="${p.id}">Imprimé</button>`;
 
       tr.innerHTML = `
         <td><strong>${idx + 1}</strong></td>
