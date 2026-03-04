@@ -409,9 +409,11 @@ function assembleBox(qty = 1) {
   const notice = $("#assembleNotice");
 
   if (blockers.length) {
+    const msg = `Stock insuffisant pour assembler ${qty} boîte(s) :\n` + blockers.slice(0, 6).join("\n") + (blockers.length > 6 ? "\n…" : "");
+    alert(msg);
     if (notice) {
       notice.hidden = false;
-      notice.textContent = `Impossible d’assembler ${qty} boîte(s) : stock insuffisant pour ${blockers.slice(0, 4).join(", ")}${blockers.length > 4 ? "…" : ""}.`;
+      notice.textContent = "Impossible : " + blockers.slice(0, 4).join(", ") + (blockers.length > 4 ? "…" : "");
     }
     return;
   }
