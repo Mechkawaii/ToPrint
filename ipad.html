@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
   <title>Mechkawaii – iPad</title>
+  <link rel="icon" type="image/png" href="./assets/images/favicon.png" />
 
   <!-- Firebase SDK v8 (compatible iOS 12) -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -790,7 +791,7 @@ function renderAssemble() {
     var need = it.perBox * assembleQty;
     var ok = it.stock >= need;
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">' +
-      '<img src="./assets/images/' + it.id + '.png" alt="" style="width:36px;height:36px;object-fit:contain;border-radius:6px;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">' +
+      '<img src="./assets/images/' + it.id + '.png" alt="" style="width:52px;height:52px;object-fit:contain;border-radius:8px;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">' +
       '<span style="flex:1;color:' + (ok ? 'var(--text)' : 'var(--crit)') + '">' + it.name + '</span>' +
       '<span style="font-family:var(--mono);color:' + (ok ? 'var(--ok)' : 'var(--crit)') + '">' + it.stock + ' / ' + need + '</span>' +
       '</div>';
@@ -820,7 +821,7 @@ function renderPrint() {
     var imgId = p.isGroup ? p.firstId : p.id;
     return '<div class="print-item ' + cls + '">' +
       '<div class="print-item-head">' +
-        '<img src="./assets/images/' + imgId + '.png" alt="" style="width:48px;height:48px;object-fit:contain;border-radius:8px;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">' +
+        '<img src="./assets/images/' + imgId + '.png" alt="" style="width:72px;height:72px;object-fit:contain;border-radius:10px;background:var(--surface2);flex-shrink:0" onerror="this.style.display=\'none\'">' +
         '<div class="print-item-name">' + (i+1) + '. ' + p.name + ' ' + badge + '</div>' +
       '</div>' +
       '<div class="print-item-stats">' +
@@ -863,7 +864,7 @@ function renderStock() {
 
     var imgId = it.id || "";
     return '<div class="stock-item ' + cls + '">' +
-      '<img src="./assets/images/' + imgId + '.png" alt="" style="width:44px;height:44px;object-fit:contain;border-radius:6px;background:var(--surface);flex-shrink:0" onerror="this.style.display=\'none\'">' +
+      '<img src="./assets/images/' + imgId + '.png" alt="" style="width:64px;height:64px;object-fit:contain;border-radius:8px;background:var(--surface);flex-shrink:0" onerror="this.style.display=\'none\'">' +
       '<div style="flex:1">' +
         '<div class="stock-name">' + it.name + ' ' + badge + '</div>' +
         '<div class="stock-meta">Par boîte: ' + it.perBox + ' · Par plateau: ' + it.perPlate + '</div>' +
