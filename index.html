@@ -619,7 +619,7 @@ function renderPrintCards() {
       return '<div class="print-card ' + cls + '">' + img(firstId, 64) +
         '<div class="pc-body"><div class="pc-name">' + (idx+1) + '. ' + g.baseLabel + ' ' + badge + '</div>' +
         '<div class="pc-stats">Stock min: ' + minStock + ' · Besoin: ' + maxNeed + ' · ' + (g.plates > 0 ? g.plates + ' plateau(x)' : 'Aucun besoin') + ' · +' + g.perVar + '×' + varItems.length + ' variantes</div>' +
-        (g.plates > 0 ? '<button class="btn btn-accent btn-sm" data-action="printed" data-id="' + firstId + '">✓ Imprimé</button>' : '') +
+        '<button class="btn btn-accent btn-sm" data-action="printed" data-id="' + firstId + '">✓ Imprimé</button>' +
         '</div></div>';
     } else {
       var p = row.p;
@@ -630,7 +630,7 @@ function renderPrintCards() {
       return '<div class="print-card ' + cls2 + '">' + img(p.id, 64) +
         '<div class="pc-body"><div class="pc-name">' + (idx+1) + '. ' + p.name + ' ' + badge2 + '</div>' +
         '<div class="pc-stats">Stock: ' + p.stock + ' · Besoin: ' + p.need + ' · ' + (p.plates > 0 ? p.plates + ' plateau(x)' : 'Aucun besoin') + ' · +' + p.perPlate + '/plateau</div>' +
-        (p.plates > 0 ? '<button class="btn btn-accent btn-sm" data-action="printed" data-id="' + p.id + '">✓ Imprimé</button>' : '') +
+        '<button class="btn btn-accent btn-sm" data-action="printed" data-id="' + p.id + '">✓ Imprimé</button>' +
         '</div></div>';
     }
   }).join("");
