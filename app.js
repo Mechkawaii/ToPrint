@@ -1033,13 +1033,8 @@ async function main() {
     scheduleCloudSave(true);
   });
 
-  $("#btnAssembleBox")?.addEventListener("click", () => {
-    const qtyStr = prompt("Combien de boîtes assemblées ?", "1");
-    if (qtyStr === null) return;
-    const qty = Math.max(1, parseInt(qtyStr, 10) || 1);
-    if (!confirm(`Confirmer : ${qty} boîte(s) assemblée(s) ?\n→ le stock de chaque pièce sera décrémenté de ${qty}× les quantités par boîte.`)) return;
-    assembleBox(qty);
-  });
+  // btnAssembleBox handled by index.html via window._assembleBox
+
 
   $("#btnUndo")?.addEventListener("click", () => {
     if (!confirm("Annuler la dernière action ?")) return;
@@ -1097,3 +1092,13 @@ main().catch((e) => {
   console.error(e);
   alert("Erreur au chargement : " + (e?.message || e));
 });
+
+/* ========= WINDOW EXPORTS (pour UI externe) ========= */
+window._getState = () => state;
+window._adjustStock = adjustStock;
+window._assembleBox = assembleBox;
+window._handlePrinted = handlePrinted;
+window._buildPrintPlan = buildPrintPlan;
+window._buildPrintGroups = buildPrintGroups;
+window._getCurrentWsId = () => currentWorkspaceId;
+window._renderAll = renderAll;
