@@ -457,6 +457,15 @@ window.addEventListener("load", function() {
 <!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
   <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card-title">Tampon cible</div>
+    <div style="display:flex;align-items:center;gap:16px">
+      <button class="qty-btn" id="bufferMinus">−</button>
+      <div style="font-size:36px;font-weight:800;color:var(--accent);min-width:50px;text-align:center" id="bufferDisplay">5</div>
+      <button class="qty-btn" id="bufferPlus">+</button>
+      <span style="color:var(--muted);font-size:14px">boîtes</span>
+    </div>
+  </div>
   <div class="card">
     <div class="card-title">Goulots d'étranglement</div>
     <div id="bottleneckList"></div>
@@ -833,6 +842,9 @@ function showNotice(elId, msg, type) {
 
 function renderKpis() {
   var kpis = computeKpis();
+  // Sync buffer display
+  var bd = el("bufferDisplay");
+  if (bd) bd.textContent = state.bufferBoxes;
   el("kpiGrid").innerHTML =
     kpi("Boîtes possibles", kpis.boxesPossible, "stock actuel") +
     kpi("Sous tampon", kpis.underBuffer, "pièces < " + state.bufferBoxes + " boîtes") +
@@ -1051,6 +1063,20 @@ el("qtyMinus").addEventListener("click", function() {
 });
 el("qtyPlus").addEventListener("click", function() {
   assembleQty++; renderAssemble();
+});
+
+// Buffer tampon cible
+el("bufferMinus").addEventListener("click", function() {
+  if (state.bufferBoxes > 1) {
+    state.bufferBoxes--;
+    el("bufferDisplay").textContent = state.bufferBoxes;
+    touchState(); saveLocal(); renderAll(); scheduleCloudSave();
+  }
+});
+el("bufferPlus").addEventListener("click", function() {
+  state.bufferBoxes++;
+  el("bufferDisplay").textContent = state.bufferBoxes;
+  touchState(); saveLocal(); renderAll(); scheduleCloudSave();
 });
 el("btnAssemble").addEventListener("click", function() {
   if (!confirm("Confirmer l'assemblage de " + assembleQty + " boîte(s) ?")) return;
