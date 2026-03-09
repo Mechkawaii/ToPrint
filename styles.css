@@ -72,7 +72,9 @@ body{
 }
 
 .card{
-  background: linear-gradient(180deg, rgba(19,19,26,.92), rgba(15,15,21,.92));
+  background: rgba(10,10,15,.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--border);
   border-radius: var(--r);
   box-shadow: var(--shadow);
@@ -101,7 +103,9 @@ body{
   .kpis{ grid-template-columns: repeat(2, 1fr); }
 }
 .kpi{
-  background: rgba(255,255,255,.03);
+  background: rgba(10,10,15,.80);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 12px;
