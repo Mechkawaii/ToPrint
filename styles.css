@@ -19,9 +19,7 @@ html,body{ height:100%; }
 body{
   margin:0;
   font-family: var(--font);
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(255,210,0,.12), transparent 60%),
-              radial-gradient(900px 600px at 90% 0%, rgba(61,220,151,.10), transparent 55%),
-              var(--bg);
+  background: url('./assets/images/Topoprint_Dark.png') center center / cover fixed, var(--bg);
   color: var(--text);
 }
 

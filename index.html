@@ -215,6 +215,52 @@
       animation: spin .8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── PULSATION CRITIQUE ── */
+    @keyframes pulse-crit {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255,77,77,0.55); }
+      50%       { box-shadow: 0 0 0 7px rgba(255,77,77,0); }
+    }
+    .badge.critical { animation: pulse-crit 2s ease-in-out infinite; }
+
+    /* ── BADGE NOTIFICATION ONGLET ── */
+    .tab-notif {
+      position: absolute;
+      top: 5px; right: 5px;
+      min-width: 17px; height: 17px;
+      background: var(--danger);
+      color: #fff;
+      border-radius: 9px;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 4px;
+      pointer-events: none;
+    }
+    .tab { position: relative; }
+
+    /* ── TOAST SUCCÈS ── */
+    @keyframes success-flash {
+      0%   { opacity: 0; transform: translate(-50%,-50%) scale(0.8); }
+      20%  { opacity: 1; transform: translate(-50%,-50%) scale(1.05); }
+      80%  { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+      100% { opacity: 0; transform: translate(-50%,-50%) scale(0.95); }
+    }
+    .success-toast {
+      position: fixed;
+      top: 50%; left: 50%;
+      background: var(--ok);
+      color: #000;
+      font-size: 20px;
+      font-weight: 800;
+      padding: 20px 40px;
+      border-radius: 18px;
+      z-index: 500;
+      pointer-events: none;
+      box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      animation: success-flash 1.8s ease forwards;
+    }
+
   </style>
 </head>
 
@@ -252,7 +298,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="dashboard"><span class="tab-icon">📦</span>Dashboard</div>
     <div class="tab" data-tab="assemble"><span class="tab-icon">🔧</span>Boîtes</div>
-    <div class="tab" data-tab="print"><span class="tab-icon">🖨️</span>Impression</div>
+    <div class="tab" data-tab="print"><span class="tab-icon">🖨️</span>Impression<span class="tab-notif hidden" id="printBadge">0</span></div>
     <div class="tab" data-tab="stock"><span class="tab-icon">📊</span>Stock</div>
     <div class="tab" data-tab="history"><span class="tab-icon">📋</span>Historique</div>
     <div class="tab" data-tab="sync"><span class="tab-icon">🔗</span>Synchro</div>
@@ -416,8 +462,15 @@ document.getElementById("qtyPlus").addEventListener("click",  function() { setQt
 document.getElementById("btnAssembleBox").addEventListener("click", function() {
   if (!confirm("Confirmer : " + assembleQty + " boîte(s) assemblée(s) ?\n→ le stock sera décrémenté de " + assembleQty + "× les quantités par boîte.")) return;
   if (typeof window._assembleBox === "function") {
-    window._assembleBox(assembleQty);
-    renderAssemblePreview();
+    var ok = window._assembleBox(assembleQty);
+    if (ok !== false) {
+      renderAssemblePreview();
+      var toast = document.createElement("div");
+      toast.className = "success-toast";
+      toast.textContent = "✅ " + assembleQty + " boîte" + (assembleQty > 1 ? "s" : "") + " assemblée" + (assembleQty > 1 ? "s" : "") + " !";
+      document.body.appendChild(toast);
+      setTimeout(function() { toast.remove(); }, 1800);
+    }
   }
 });
 
@@ -583,6 +636,17 @@ function renderPrintCards() {
       if (window._handlePrinted) window._handlePrinted(btn.dataset.id);
     });
   });
+
+  // Badge notification onglet Impression
+  var s2 = window._getState ? window._getState() : null;
+  if (s2) {
+    var critCount = s2.items.filter(function(it) { return it.perBox > 0 && it.stock < it.perBox; }).length;
+    var badge = document.getElementById("printBadge");
+    if (badge) {
+      if (critCount > 0) { badge.textContent = critCount; badge.classList.remove("hidden"); }
+      else { badge.classList.add("hidden"); }
+    }
+  }
 }
 
 function renderLogList() {
