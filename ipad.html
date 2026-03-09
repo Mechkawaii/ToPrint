@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Mechkawaii – iPad</title>
+
+  <!-- Firebase SDK v8 (compatible iOS 12) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+  <style>
+    :root {
+      --bg: #0f0f14;
+      --surface: #1a1a24;
+      --surface2: #22223a;
+      --accent: #e8b84b;
+      --accent2: #7c6af7;
+      --ok: #3ecf8e;
+      --warn: #f5a623;
+      --crit: #f04f4f;
+      --text: #f0eff8;
+      --muted: #888099;
+      --border: #2e2e45;
+      --radius: 12px;
+      --font: 'Georgia', serif;
+      --mono: 'Courier New', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 16px;
+      min-height: 100vh;
+    }
+
+    /* ── HEADER ── */
+    .header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 42px; height: 42px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: bold; font-size: 14px; letter-spacing: 1px;
+    }
+    .brand h1 { font-size: 18px; font-weight: normal; letter-spacing: 0.5px; }
+    .brand p { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+    .sync-status {
+      font-size: 12px;
+      font-family: var(--mono);
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .sync-status.connected { border-color: var(--ok); color: var(--ok); }
+    .sync-status.error { border-color: var(--crit); color: var(--crit); }
+
+    /* ── TABS ── */
+    .tabs {
+      display: flex;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .tab {
+      flex: 1;
+      min-width: 80px;
+      padding: 14px 10px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-icon { font-size: 20px; display: block; margin-bottom: 2px; }
+
+    /* ── CONTENT ── */
+    .page { display: none; padding: 16px; }
+    .page.active { display: block; }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .card-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── KPIs ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .kpi {
+      background: var(--surface2);
+      border-radius: var(--radius);
+      padding: 14px;
+      border: 1px solid var(--border);
+    }
+    .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+    .kpi-value { font-size: 28px; font-family: var(--mono); color: var(--accent); }
+    .kpi-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-family: var(--font);
+      font-weight: bold;
+      transition: opacity 0.15s, transform 0.1s;
+      -webkit-appearance: none;
+    }
+    .btn:active { opacity: 0.7; transform: scale(0.97); }
+    .btn-accent { background: var(--accent); color: #000; }
+    .btn-primary { background: var(--accent2); color: #fff; }
+    .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: var(--crit); color: #fff; }
+    .btn-ok { background: var(--ok); color: #000; }
+    .btn-block { width: 100%; margin-bottom: 10px; }
+    .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+    /* ── ASSEMBLE ── */
+    .assemble-big {
+      background: linear-gradient(135deg, var(--accent2), #4a3faa);
+      border-radius: var(--radius);
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .assemble-big h2 { font-size: 22px; margin-bottom: 8px; }
+    .assemble-big p { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 16px; }
+    .qty-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 16px; }
+    .qty-btn {
+      width: 48px; height: 48px;
+      background: rgba(255,255,255,0.2);
+      border: none; border-radius: 50%;
+      color: #fff; font-size: 24px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+    }
+    .qty-display { font-size: 40px; font-family: var(--mono); min-width: 60px; text-align: center; }
+
+    /* ── STOCK LIST ── */
+    .search-input {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 16px;
+      font-family: var(--font);
+      margin-bottom: 12px;
+      -webkit-appearance: none;
+    }
+    .search-input:focus { outline: none; border-color: var(--accent); }
+
+    .stock-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .stock-item.critical { border-color: var(--crit); }
+    .stock-item.low { border-color: var(--warn); }
+    .stock-item.ok { border-color: var(--ok); }
+
+    .stock-name { font-size: 15px; flex: 1; }
+    .stock-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+    .stock-val { font-size: 24px; font-family: var(--mono); color: var(--accent); text-align: right; min-width: 50px; }
+    .stock-adj { display: flex; gap: 6px; align-items: center; }
+    .adj-btn {
+      width: 36px; height: 36px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ── BADGE ── */
+    .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      font-family: var(--mono);
+    }
+    .badge-crit { background: rgba(240,79,79,0.2); color: var(--crit); border: 1px solid var(--crit); }
+    .badge-warn { background: rgba(245,166,35,0.2); color: var(--warn); border: 1px solid var(--warn); }
+    .badge-ok { background: rgba(62,207,142,0.2); color: var(--ok); border: 1px solid var(--ok); }
+
+    /* ── PRINT PLAN ── */
+    .print-item {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 8px;
+    }
+    .print-item.critical { border-left: 4px solid var(--crit); }
+    .print-item.low { border-left: 4px solid var(--warn); }
+    .print-item-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+    .print-item-name { font-size: 16px; flex: 1; margin-right: 10px; }
+    .print-item-stats { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-bottom: 10px; }
+
+    /* ── SYNC PAGE ── */
+    .sync-form { display: flex; flex-direction: column; gap: 10px; }
+    .input-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+    .text-input {
+      width: 100%;
+      padding: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 18px;
+      font-family: var(--mono);
+      letter-spacing: 2px;
+      -webkit-appearance: none;
+    }
+    .text-input:focus { outline: none; border-color: var(--accent); }
+
+    /* ── LOG ── */
+    .log-entry {
+      border-bottom: 1px solid var(--border);
+      padding: 10px 0;
+      font-size: 13px;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-type {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      margin-bottom: 4px;
+    }
+    .log-detail { color: var(--muted); font-size: 12px; }
+
+    /* ── NOTICE ── */
+    .notice {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .notice-error { background: rgba(240,79,79,0.15); border: 1px solid var(--crit); color: var(--crit); }
+    .notice-ok { background: rgba(62,207,142,0.15); border: 1px solid var(--ok); color: var(--ok); }
+    .notice-info { background: rgba(124,106,247,0.15); border: 1px solid var(--accent2); color: #b0a8ff; }
+
+    .hidden { display: none !important; }
+
+    /* ── MODAL ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+    }
+    .modal h3 { margin-bottom: 16px; font-size: 18px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .modal-actions .btn { flex: 1; }
+
+    .spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-screen {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; z-index: 300;
+    }
+    .loading-screen .logo-big {
+      width: 80px; height: 80px;
+      background: var(--accent);
+      color: #000;
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: bold;
+    }
+    .loading-screen p { color: var(--muted); font-family: var(--mono); font-size: 14px; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div class="loading-screen" id="loadingScreen">
+  <div class="logo-big">MK</div>
+  <div class="spinner"></div>
+  <p id="loadingMsg">Initialisation…</p>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div class="brand">
+    <div class="logo">MK</div>
+    <div>
+      <h1>Mechkawaii</h1>
+      <p id="headerSub">Production</p>
+    </div>
+  </div>
+  <div class="sync-status" id="syncStatus">⏳ Connexion…</div>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" data-tab="dashboard">
+    <span class="tab-icon">📦</span>Dashboard
+  </div>
+  <div class="tab" data-tab="assemble">
+    <span class="tab-icon">🔧</span>Boîtes
+  </div>
+  <div class="tab" data-tab="print">
+    <span class="tab-icon">🖨️</span>Impression
+  </div>
+  <div class="tab" data-tab="stock">
+    <span class="tab-icon">📊</span>Stock
+  </div>
+  <div class="tab" data-tab="sync">
+    <span class="tab-icon">🔗</span>Synchro
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="card">
+    <div class="card-title">Goulots d'étranglement</div>
+    <div id="bottleneckList"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Dernières actions</div>
+    <div id="recentLog"></div>
+  </div>
+</div>
+
+<!-- ASSEMBLE -->
+<div class="page" id="page-assemble">
+  <div class="assemble-big">
+    <h2>Assembler des boîtes</h2>
+    <p>Décrémente le stock de toutes les pièces selon les quantités par boîte.</p>
+    <div class="qty-row">
+      <button class="qty-btn" id="qtyMinus">−</button>
+      <div class="qty-display" id="qtyDisplay">1</div>
+      <button class="qty-btn" id="qtyPlus">+</button>
+    </div>
+    <button class="btn btn-accent" id="btnAssemble" style="font-size:18px;padding:16px 40px;">
+      ✓ Confirmer l'assemblage
+    </button>
+  </div>
+  <div id="assembleNotice"></div>
+  <div class="card">
+    <div class="card-title">Stock requis pour 1 boîte</div>
+    <div id="assemblePreview"></div>
+  </div>
+</div>
+
+<!-- PRINT -->
+<div class="page" id="page-print">
+  <div id="printList"></div>
+</div>
+
+<!-- STOCK -->
+<div class="page" id="page-stock">
+  <input class="search-input" id="stockSearch" placeholder="🔍  Rechercher une pièce…" type="search" />
+  <div id="stockList"></div>
+</div>
+
+<!-- SYNC -->
+<div class="page" id="page-sync">
+  <div class="card">
+    <div class="card-title">Code de synchronisation</div>
+    <div class="sync-form">
+      <div>
+        <div class="input-label">Entre le code du PC</div>
+        <input class="text-input" id="syncCodeInput" placeholder="xxxx-xxxx-xxxx" autocomplete="off" autocorrect="off" autocapitalize="off" />
+      </div>
+      <button class="btn btn-primary btn-block" id="btnConnect">🔗 Connecter</button>
+      <button class="btn btn-ghost btn-block" id="btnNewCode">✨ Créer un nouveau code</button>
+    </div>
+    <div id="syncNotice" style="margin-top:12px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Informations</div>
+    <div id="syncInfo" style="font-size:13px;color:var(--muted);font-family:var(--mono);line-height:1.8"></div>
+  </div>
+</div>
+
+<!-- Modal ajustement stock -->
+<div class="modal-overlay hidden" id="adjModal">
+  <div class="modal">
+    <h3 id="adjModalTitle">Ajuster le stock</h3>
+    <div style="margin-bottom:12px">
+      <div class="input-label">Quantité (négatif pour déduire)</div>
+      <input class="text-input" id="adjQty" type="number" placeholder="ex: -2 ou +10" style="font-size:24px" />
+    </div>
+    <div>
+      <div class="input-label">Raison (optionnel)</div>
+      <input class="text-input" id="adjReason" type="text" placeholder="ex: défectueux" style="font-size:16px;letter-spacing:0" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="adjCancel">Annuler</button>
+      <button class="btn btn-accent" id="adjConfirm">Appliquer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =========================================================
+// CONFIG FIREBASE (compatible SDK v8)
+// =========================================================
+var firebaseConfig = {
+  apiKey: "AIzaSyCUcaGdiF6deI56S6JWXwleCameAWAYEJk",
+  authDomain: "mechkawaii-to-print.firebaseapp.com",
+  projectId: "mechkawaii-to-print",
+  storageBucket: "mechkawaii-to-print.firebasestorage.app",
+  messagingSenderId: "3742880689",
+  appId: "COLLE_ICI_L_APPID_EXACT"   // ← Remplace avec ton vrai appId
+};
+
+firebase.initializeApp(firebaseConfig);
+var db = firebase.firestore();
+var auth = firebase.auth();
+
+// =========================================================
+// STATE
+// =========================================================
+var STORAGE_KEY = "mechkawaii-production:v3";
+var DEVICE_KEY  = "mechkawaii-ipad:deviceId";
+var state = null;
+var currentWsId = null;
+var unsubSnapshot = null;
+var adjItemId = null;
+var assembleQty = 1;
+
+function getDeviceId() {
+  var id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = "ipad-" + Math.random().toString(36).slice(2) + "-" + Date.now();
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
+var DEVICE_ID = getDeviceId();
+
+// =========================================================
+// UTILS
+// =========================================================
+function nowISO() { return new Date().toISOString(); }
+function clampInt(n, fallback) {
+  var x = parseInt(n, 10);
+  return isFinite(x) ? x : (fallback || 0);
+}
+function fmtDate(iso) {
+  try {
+    var d = new Date(iso);
+    return d.toLocaleDateString("fr-FR") + " " + d.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
+  } catch(e) { return iso; }
+}
+function ceilDiv(a, b) { return b > 0 ? Math.ceil(a / b) : 0; }
+
+// =========================================================
+// LOCAL STORAGE
+// =========================================================
+function loadLocal() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch(e) { return null; }
+}
+function saveLocal() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+// =========================================================
+// LOG
+// =========================================================
+function pushLog(entry) {
+  state.log.push(entry);
+  if (state.log.length > 2000) state.log = state.log.slice(-1200);
+}
+
+// =========================================================
+// COMPUTE
+// =========================================================
+function computeKpis() {
+  var items = state.items.filter(function(it) { return it.perBox > 0; });
+  var byItem = items.map(function(it) { return Math.floor(it.stock / it.perBox); });
+  var boxesPossible = byItem.length ? Math.min.apply(null, byItem) : 0;
+  var minVal = boxesPossible;
+  var bottlenecks = items.filter(function(it) {
+    return Math.floor(it.stock / it.perBox) === minVal;
+  }).map(function(it) { return it.name; });
+  var underBuffer = items.filter(function(it) {
+    return it.stock < state.bufferBoxes * it.perBox;
+  }).length;
+  return { boxesPossible: boxesPossible, bottlenecks: bottlenecks, underBuffer: underBuffer };
+}
+
+function canAssemble(qty) {
+  var blockers = [];
+  state.items.forEach(function(it) {
+    if (it.perBox > 0 && it.stock < it.perBox * qty) {
+      blockers.push(it.name + " (stock: " + it.stock + ", besoin: " + (it.perBox * qty) + ")");
+    }
+  });
+  return blockers;
+}
+
+function buildPrintPlan() {
+  var target = state.bufferBoxes;
+  var items = state.items.filter(function(it) { return it.perBox > 0; });
+
+  // Build groups
+  var groupMap = {};
+  items.forEach(function(it) {
+    if (!it.printGroup) return;
+    var gid = String(it.printGroup);
+    if (!groupMap[gid]) {
+      groupMap[gid] = { id: gid, label: it.printGroupLabel || gid, perVar: 0, variants: [] };
+    }
+    var pv = clampInt(it.perVariantPerPlate, 0) || clampInt(it.perPlate, 0);
+    groupMap[gid].perVar = Math.max(groupMap[gid].perVar, pv);
+    groupMap[gid].variants.push(it);
+  });
+
+  var plan = [];
+  var seenGroups = {};
+
+  items.forEach(function(it) {
+    var targetStock = target * it.perBox;
+    var need = Math.max(0, targetStock - it.stock);
+
+    if (it.printGroup) {
+      var gid = String(it.printGroup);
+      if (seenGroups[gid]) return;
+      seenGroups[gid] = true;
+
+      var g = groupMap[gid];
+      var maxNeed = 0;
+      g.variants.forEach(function(v) {
+        maxNeed = Math.max(maxNeed, Math.max(0, target * v.perBox - v.stock));
+      });
+      var plates = (g.perVar > 0 && maxNeed > 0) ? ceilDiv(maxNeed, g.perVar) : 0;
+      var minStock = Math.min.apply(null, g.variants.map(function(v) { return v.stock; }));
+      var minPerBox = Math.min.apply(null, g.variants.map(function(v) { return v.perBox || 0; }));
+
+      plan.push({
+        id: gid,
+        isGroup: true,
+        name: g.label,
+        firstId: g.variants[0] ? g.variants[0].id : gid,
+        stock: minStock,
+        perBox: minPerBox,
+        perVar: g.perVar,
+        variants: g.variants,
+        plates: plates,
+        need: maxNeed,
+        targetStock: target * minPerBox
+      });
+    } else {
+      var plates2 = need > 0 ? ceilDiv(need, it.perPlate) : 0;
+      plan.push({
+        id: it.id,
+        isGroup: false,
+        name: it.name,
+        stock: it.stock,
+        perBox: it.perBox,
+        perPlate: it.perPlate,
+        plates: plates2,
+        need: need,
+        targetStock: targetStock
+      });
+    }
+  });
+
+  plan.sort(function(a, b) {
+    var ba = Math.floor(a.stock / (a.perBox || 1));
+    var bb = Math.floor(b.stock / (b.perBox || 1));
+    if (ba !== bb) return ba - bb;
+    return b.need - a.need;
+  });
+
+  return plan;
+}
+
+// =========================================================
+// ACTIONS
+// =========================================================
+function getItemById(id) {
+  return state.items.filter(function(x) { return x.id === id; })[0] || null;
+}
+
+function touchState() {
+  state.meta = state.meta || {};
+  state.meta.lastUpdatedAt = nowISO();
+  state.meta.lastUpdatedBy = DEVICE_ID;
+}
+
+function adjustStock(itemId, delta, reason) {
+  var it = getItemById(itemId);
+  if (!it) return;
+  it.stock = Math.max(0, it.stock + delta);
+  pushLog({ ts: nowISO(), type: "stock", itemId: itemId, itemName: it.name, qty: delta, detail: reason || "ajustement" });
+  touchState();
+  saveLocal();
+  renderAll();
+  scheduleCloudSave();
+}
+
+function assembleBoxes(qty) {
+  var blockers = canAssemble(qty);
+  if (blockers.length) {
+    showNotice("assembleNotice", "❌ Stock insuffisant pour :\n" + blockers.slice(0,5).join("\n"), "error");
+    return false;
+  }
+
+  var snapshot = state.items.map(function(it) { return { id: it.id, stock: it.stock }; });
+
+  state.items.forEach(function(it) {
+    if (it.perBox > 0) it.stock = Math.max(0, it.stock - it.perBox * qty);
+  });
+
+  pushLog({
+    ts: nowISO(), type: "boîte", itemId: null, itemName: "Boîte assemblée",
+    qty: qty, detail: qty + " boîte(s) assemblée(s)",
+    snapshotBefore: snapshot
+  });
+
+  touchState();
+  saveLocal();
+  renderAll();
+  scheduleCloudSave();
+  showNotice("assembleNotice", "✅ " + qty + " boîte(s) assemblée(s) avec succès !", "ok");
+  return true;
+}
+
+function markPrinted(planItem) {
+  var platesStr = window.prompt(
+    planItem.isGroup
+      ? 'Plateaux imprimés pour "' + planItem.name + '" ?\n(+' + planItem.perVar + ' pièces par variante)'
+      : 'Plateaux imprimés pour "' + planItem.name + '" ?\n(+' + planItem.perPlate + ' pièces par plateau)',
+    "1"
+  );
+  if (platesStr === null) return;
+  var plates = Math.max(0, clampInt(platesStr, 1));
+  if (plates === 0) return;
+
+  if (planItem.isGroup) {
+    var addedEach = plates * planItem.perVar;
+    var groupItems = state.items.filter(function(x) {
+      return String(x.printGroup || "") === String(planItem.id);
+    });
+    groupItems.forEach(function(x) { x.stock = clampInt(x.stock, 0) + addedEach; });
+    pushLog({
+      ts: nowISO(), type: "impression",
+      itemId: planItem.id, itemName: "Plateau mix: " + planItem.name,
+      qty: "+" + addedEach + "/variante",
+      detail: plates + " plateau(x) → +" + addedEach + " sur " + groupItems.length + " variante(s)"
+    });
+  } else {
+    var defStr = window.prompt("Pièces défectueuses ? (0 si parfait)", "0");
+    if (defStr === null) return;
+    var defects = Math.max(0, clampInt(defStr, 0));
+    var produced = plates * planItem.perPlate;
+    var added = Math.max(0, produced - defects);
+    var it = getItemById(planItem.id);
+    if (it) it.stock += added;
+    pushLog({
+      ts: nowISO(), type: "impression",
+      itemId: planItem.id, itemName: planItem.name,
+      qty: added,
+      detail: plates + " plateau(x) → " + produced + " pièces, -" + defects + " défectueux"
+    });
+  }
+
+  touchState();
+  saveLocal();
+  renderAll();
+  scheduleCloudSave();
+}
+
+// =========================================================
+// RENDER
+// =========================================================
+function el(id) { return document.getElementById(id); }
+
+function showNotice(elId, msg, type) {
+  var n = el(elId);
+  if (!n) return;
+  n.className = "notice notice-" + type;
+  n.style.whiteSpace = "pre-line";
+  n.textContent = msg;
+}
+
+function renderKpis() {
+  var kpis = computeKpis();
+  el("kpiGrid").innerHTML =
+    kpi("Boîtes possibles", kpis.boxesPossible, "stock actuel") +
+    kpi("Sous tampon", kpis.underBuffer, "pièces < " + state.bufferBoxes + " boîtes") +
+    kpi("Tampon cible", state.bufferBoxes, "boîtes") +
+    kpi("Références", state.items.length, "pièces suivies");
+
+  var bn = el("bottleneckList");
+  if (kpis.bottlenecks.length && kpis.boxesPossible < state.bufferBoxes) {
+    bn.innerHTML = kpis.bottlenecks.slice(0,5).map(function(n) {
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--border);color:var(--warn);font-size:14px">⚠️ ' + n + '</div>';
+    }).join("");
+  } else {
+    bn.innerHTML = '<div style="color:var(--ok);font-size:14px">✅ Tous les stocks sont au-dessus du tampon</div>';
+  }
+
+  var log = state.log.slice(-5).reverse();
+  el("recentLog").innerHTML = log.length ? log.map(function(e) {
+    return '<div class="log-entry"><span class="log-type">' + e.type + '</span> ' +
+      (e.itemName || "") + ' <span style="color:var(--accent);font-family:var(--mono)">' + (e.qty !== undefined ? e.qty : "") + '</span>' +
+      '<div class="log-detail">' + fmtDate(e.ts) + (e.detail ? " · " + e.detail : "") + '</div></div>';
+  }).join("") : '<div style="color:var(--muted);font-size:13px">Aucune action récente</div>';
+}
+
+function kpi(label, value, hint) {
+  return '<div class="kpi"><div class="kpi-label">' + label + '</div>' +
+    '<div class="kpi-value">' + value + '</div>' +
+    '<div class="kpi-hint">' + hint + '</div></div>';
+}
+
+function renderAssemble() {
+  el("qtyDisplay").textContent = assembleQty;
+  var items = state.items.filter(function(it) { return it.perBox > 0; });
+  el("assemblePreview").innerHTML = items.map(function(it) {
+    var need = it.perBox * assembleQty;
+    var ok = it.stock >= need;
+    return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">' +
+      '<span style="color:' + (ok ? 'var(--text)' : 'var(--crit)') + '">' + it.name + '</span>' +
+      '<span style="font-family:var(--mono);color:' + (ok ? 'var(--ok)' : 'var(--crit)') + '">' + it.stock + ' / ' + need + '</span>' +
+      '</div>';
+  }).join("");
+}
+
+function renderPrint() {
+  var plan = buildPrintPlan();
+  if (!plan.length) {
+    el("printList").innerHTML = '<div class="notice notice-ok">✅ Tout est au tampon, rien à imprimer !</div>';
+    return;
+  }
+
+  el("printList").innerHTML = plan.map(function(p, i) {
+    var isCrit = p.stock < p.perBox;
+    var isLow = !isCrit && p.stock < state.bufferBoxes * p.perBox;
+    var cls = isCrit ? "critical" : (isLow ? "low" : "");
+    var badge = isCrit
+      ? '<span class="badge badge-crit">CRITIQUE</span>'
+      : isLow
+        ? '<span class="badge badge-warn">SOUS TAMPON</span>'
+        : '<span class="badge badge-ok">OK</span>';
+
+    var platesTxt = p.plates > 0 ? p.plates + " plateau(x)" : "Aucun besoin";
+    var perPlateTxt = p.isGroup ? "+" + p.perVar + "×" + p.variants.length + " variantes" : "+" + p.perPlate + "/plateau";
+
+    return '<div class="print-item ' + cls + '">' +
+      '<div class="print-item-head">' +
+        '<div class="print-item-name">' + (i+1) + '. ' + p.name + ' ' + badge + '</div>' +
+      '</div>' +
+      '<div class="print-item-stats">' +
+        'Stock: ' + p.stock + ' · Besoin: ' + p.need + ' · ' + platesTxt + ' · ' + perPlateTxt +
+      '</div>' +
+      (p.plates > 0
+        ? '<button class="btn btn-accent btn-sm" data-idx="' + i + '">✓ Imprimé</button>'
+        : '') +
+      '</div>';
+  }).join("");
+
+  // Bind buttons
+  var btns = el("printList").querySelectorAll("[data-idx]");
+  var planCopy = plan;
+  for (var i = 0; i < btns.length; i++) {
+    (function(btn) {
+      btn.addEventListener("click", function() {
+        var idx = parseInt(btn.getAttribute("data-idx"), 10);
+        markPrinted(planCopy[idx]);
+      });
+    })(btns[i]);
+  }
+}
+
+function renderStock() {
+  var q = (el("stockSearch").value || "").trim().toLowerCase();
+  var items = state.items.filter(function(it) {
+    return it.name.toLowerCase().indexOf(q) !== -1;
+  }).sort(function(a, b) { return a.name.localeCompare(b.name, "fr"); });
+
+  el("stockList").innerHTML = items.map(function(it) {
+    var isCrit = it.perBox > 0 && it.stock < it.perBox;
+    var isLow = it.perBox > 0 && !isCrit && it.stock < state.bufferBoxes * it.perBox;
+    var cls = isCrit ? "critical" : (isLow ? "low" : "ok");
+    var badge = isCrit
+      ? '<span class="badge badge-crit">CRITIQUE</span>'
+      : isLow
+        ? '<span class="badge badge-warn">BAS</span>'
+        : '';
+
+    return '<div class="stock-item ' + cls + '">' +
+      '<div style="flex:1">' +
+        '<div class="stock-name">' + it.name + ' ' + badge + '</div>' +
+        '<div class="stock-meta">Par boîte: ' + it.perBox + ' · Par plateau: ' + it.perPlate + '</div>' +
+      '</div>' +
+      '<div style="display:flex;align-items:center;gap:8px">' +
+        '<div class="stock-val">' + it.stock + '</div>' +
+        '<div class="stock-adj">' +
+          '<button class="adj-btn" data-id="' + it.id + '" data-action="dec">−</button>' +
+          '<button class="adj-btn" data-id="' + it.id + '" data-action="inc">+</button>' +
+          '<button class="adj-btn" data-id="' + it.id + '" data-action="adj" style="font-size:14px">✏️</button>' +
+        '</div>' +
+      '</div>' +
+      '</div>';
+  }).join("");
+
+  // Bind
+  var btns = el("stockList").querySelectorAll("[data-id]");
+  for (var i = 0; i < btns.length; i++) {
+    (function(btn) {
+      btn.addEventListener("click", function() {
+        var id = btn.getAttribute("data-id");
+        var action = btn.getAttribute("data-action");
+        if (action === "inc") adjustStock(id, 1, "ajustement +1");
+        else if (action === "dec") adjustStock(id, -1, "ajustement -1");
+        else if (action === "adj") openAdjModal(id);
+      });
+    })(btns[i]);
+  }
+}
+
+function renderSyncInfo() {
+  el("syncInfo").innerHTML =
+    "Workspace : " + (currentWsId || "non connecté") + "<br>" +
+    "Device ID : " + DEVICE_ID.slice(0, 20) + "…<br>" +
+    "Dernière MAJ : " + (state.meta && state.meta.lastUpdatedAt ? fmtDate(state.meta.lastUpdatedAt) : "—") + "<br>" +
+    "Entrées log : " + state.log.length;
+  if (currentWsId) el("syncCodeInput").value = currentWsId;
+}
+
+function renderAll() {
+  if (!state) return;
+  renderKpis();
+  renderAssemble();
+  renderPrint();
+  renderStock();
+  renderSyncInfo();
+}
+
+// =========================================================
+// MODAL AJUSTEMENT
+// =========================================================
+function openAdjModal(itemId) {
+  adjItemId = itemId;
+  var it = getItemById(itemId);
+  el("adjModalTitle").textContent = "Ajuster : " + (it ? it.name : itemId);
+  el("adjQty").value = "";
+  el("adjReason").value = "";
+  el("adjModal").classList.remove("hidden");
+  setTimeout(function() { el("adjQty").focus(); }, 100);
+}
+
+el("adjCancel").addEventListener("click", function() {
+  el("adjModal").classList.add("hidden");
+});
+el("adjConfirm").addEventListener("click", function() {
+  var qty = clampInt(el("adjQty").value, null);
+  if (qty === null || qty === 0) { alert("Entre une quantité différente de 0."); return; }
+  var reason = el("adjReason").value.trim() || "ajustement manuel";
+  adjustStock(adjItemId, qty, reason);
+  el("adjModal").classList.add("hidden");
+});
+
+// =========================================================
+// TABS
+// =========================================================
+var tabs = document.querySelectorAll(".tab");
+for (var i = 0; i < tabs.length; i++) {
+  (function(tab) {
+    tab.addEventListener("click", function() {
+      var target = tab.getAttribute("data-tab");
+      document.querySelectorAll(".tab").forEach(function(t) { t.classList.remove("active"); });
+      document.querySelectorAll(".page").forEach(function(p) { p.classList.remove("active"); });
+      tab.classList.add("active");
+      el("page-" + target).classList.add("active");
+      if (target === "stock") renderStock();
+      if (target === "print") renderPrint();
+    });
+  })(tabs[i]);
+}
+
+// =========================================================
+// ASSEMBLE CONTROLS
+// =========================================================
+el("qtyMinus").addEventListener("click", function() {
+  if (assembleQty > 1) { assembleQty--; renderAssemble(); }
+});
+el("qtyPlus").addEventListener("click", function() {
+  assembleQty++; renderAssemble();
+});
+el("btnAssemble").addEventListener("click", function() {
+  if (!confirm("Confirmer l'assemblage de " + assembleQty + " boîte(s) ?")) return;
+  assembleBoxes(assembleQty);
+});
+
+// Stock search
+el("stockSearch").addEventListener("input", function() { renderStock(); });
+
+// =========================================================
+// FIREBASE SYNC
+// =========================================================
+function setSyncStatus(msg, cls) {
+  var s = el("syncStatus");
+  s.textContent = msg;
+  s.className = "sync-status" + (cls ? " " + cls : "");
+}
+
+function showSyncNotice(msg, type) {
+  showNotice("syncNotice", msg, type || "info");
+}
+
+function stateTs(s) { return (s && s.meta && s.meta.lastUpdatedAt) || ""; }
+
+function normalizeState(raw) {
+  return {
+    bufferBoxes: clampInt(raw.bufferBoxes, 5),
+    items: Array.isArray(raw.items) ? raw.items.map(function(it) {
+      return {
+        id: String(it.id), name: String(it.name),
+        perBox: clampInt(it.perBox, 0), perPlate: clampInt(it.perPlate, 0),
+        stock: clampInt(it.stock, 0),
+        printGroup: it.printGroup ? String(it.printGroup) : undefined,
+        perVariantPerPlate: it.perVariantPerPlate !== undefined ? clampInt(it.perVariantPerPlate, 0) : undefined,
+        printGroupLabel: it.printGroupLabel ? String(it.printGroupLabel) : undefined
+      };
+    }) : [],
+    log: Array.isArray(raw.log) ? raw.log : [],
+    meta: raw.meta || { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: "cloud", workspaceId: currentWsId }
+  };
+}
+
+function scheduleCloudSave() {
+  if (!currentWsId) return;
+  setTimeout(function() {
+    var ref = db.collection("workspaces").doc(currentWsId);
+    var clean = JSON.parse(JSON.stringify(state));
+    ref.set({ state: clean, updatedAt: firebase.firestore.FieldValue.serverTimestamp(), updatedBy: DEVICE_ID }, { merge: true })
+      .then(function() { setSyncStatus("✅ Synchro OK", "connected"); })
+      .catch(function(e) { setSyncStatus("⚠️ Erreur sync", "error"); console.error(e); });
+  }, 400);
+}
+
+function connectWorkspace(wsId) {
+  if (unsubSnapshot) { unsubSnapshot(); unsubSnapshot = null; }
+  currentWsId = wsId;
+  state.meta = state.meta || {};
+  state.meta.workspaceId = wsId;
+  saveLocal();
+  setSyncStatus("⏳ Connexion…");
+
+  var ref = db.collection("workspaces").doc(wsId);
+  ref.get().then(function(snap) {
+    if (!snap.exists) {
+      return ref.set({
+        state: JSON.parse(JSON.stringify(state)),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedBy: DEVICE_ID
+      }, { merge: true }).then(function() {
+        setSyncStatus("✅ " + wsId, "connected");
+        showSyncNotice("✅ Workspace créé et connecté : " + wsId, "ok");
+      });
+    }
+
+    var cloud = normalizeState(snap.data().state || {});
+    if (stateTs(cloud) > stateTs(state)) {
+      state = cloud;
+      saveLocal();
+      renderAll();
+      showSyncNotice("✅ Connecté · données cloud chargées", "ok");
+    } else {
+      showSyncNotice("✅ Connecté · données locales envoyées", "ok");
+      scheduleCloudSave();
+    }
+    setSyncStatus("✅ " + wsId, "connected");
+  }).catch(function(e) {
+    setSyncStatus("⚠️ Erreur", "error");
+    showSyncNotice("❌ Erreur : " + (e.message || e), "error");
+  });
+
+  // Realtime
+  unsubSnapshot = ref.onSnapshot(function(live) {
+    var data = live.data();
+    if (!data || !data.state || !data.state.items) return;
+    if (data.updatedBy === DEVICE_ID) return;
+
+    var cloud = normalizeState(data.state);
+    if (stateTs(cloud) > stateTs(state)) {
+      state = cloud;
+      saveLocal();
+      renderAll();
+      setSyncStatus("🔄 " + wsId, "connected");
+    }
+  });
+}
+
+el("btnConnect").addEventListener("click", function() {
+  var code = (el("syncCodeInput").value || "").trim();
+  if (!code) { alert("Entre un code de synchro."); return; }
+  connectWorkspace(code);
+});
+
+el("btnNewCode").addEventListener("click", function() {
+  var part = function() { return Math.random().toString(36).slice(2,6); };
+  var code = part() + "-" + part() + "-" + part();
+  el("syncCodeInput").value = code;
+  connectWorkspace(code);
+});
+
+// =========================================================
+// INIT
+// =========================================================
+function init() {
+  el("loadingMsg").textContent = "Authentification…";
+  auth.signInAnonymously().then(function() {
+    el("loadingMsg").textContent = "Chargement des données…";
+    state = loadLocal();
+    if (!state || !state.items || !state.items.length) {
+      // Essaie de charger items.json
+      fetch("./data/items.json").then(function(r) {
+        if (!r.ok) throw new Error("items.json introuvable");
+        return r.json();
+      }).then(function(items) {
+        state = {
+          bufferBoxes: 5,
+          items: items.map(function(it) { return Object.assign({}, it, { stock: parseInt(it.stock, 10) || 0 }); }),
+          log: [],
+          meta: { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: null }
+        };
+        saveLocal();
+        finishInit();
+      }).catch(function(e) {
+        // Pas de items.json, state vide
+        state = { bufferBoxes: 5, items: [], log: [],
+          meta: { version: 3, lastUpdatedAt: nowISO(), lastUpdatedBy: DEVICE_ID, workspaceId: null } };
+        finishInit();
+      });
+    } else {
+      finishInit();
+    }
+  }).catch(function(e) {
+    el("loadingMsg").textContent = "⚠️ Erreur auth : " + (e.message || e);
+  });
+}
+
+function finishInit() {
+  renderAll();
+  el("loadingScreen").style.display = "none";
+
+  // Auto-reconnect
+  var savedWs = state && state.meta && state.meta.workspaceId;
+  if (savedWs) {
+    el("syncCodeInput").value = savedWs;
+    connectWorkspace(savedWs);
+  } else {
+    setSyncStatus("🔌 Non connecté");
+  }
+}
+
+init();
+</script>
+</body>
+</html>
