@@ -675,19 +675,34 @@ function renderSyncInfo() {
   if (wsId) document.getElementById("syncCode").value = wsId;
 }
 
-// Listen for renderAll event dispatched by app.js
-window.addEventListener("mkRenderAll", function() {
-  renderBottlenecks();
-  renderAssemblePreview();
-  renderStockCards();
-  renderPrintCards();
-  renderLogList();
-  renderSyncInfo();
-  document.getElementById("loadingScreen").style.display = "none";
-});
-
 // Stock search
 document.getElementById("stockSearch").addEventListener("input", renderStockCards);
+
+// Polling leger : attend que app.js ait initialisé l'état puis lance le rendu
+function waitAndRender() {
+  if (window._getState && window._getState() && window._getState().items && window._getState().items.length) {
+    renderBottlenecks();
+    renderAssemblePreview();
+    renderStockCards();
+    renderPrintCards();
+    renderLogList();
+    renderSyncInfo();
+    document.getElementById("loadingScreen").style.display = "none";
+    // Continue à écouter les mises à jour
+    window.addEventListener("mkRenderAll", function() {
+      renderBottlenecks();
+      renderAssemblePreview();
+      renderStockCards();
+      renderPrintCards();
+      renderLogList();
+      renderSyncInfo();
+      document.getElementById("loadingScreen").style.display = "none";
+    });
+  } else {
+    setTimeout(waitAndRender, 100);
+  }
+}
+waitAndRender();
 </script>
 
 <script type="module" src="./app.js"></script>
