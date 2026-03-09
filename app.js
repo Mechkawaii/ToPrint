@@ -22,7 +22,7 @@ const firebaseConfig = {
   projectId: "mechkawaii-to-print",
   storageBucket: "mechkawaii-to-print.firebasestorage.app",
   messagingSenderId: "3742880689",
-  appId: "COLLE_ICI_L_APPID_EXACT"
+  appId: "1:37428806089:web:6f389bd03566fd7b6a6818"
 };
 
 const fbApp = initializeApp(firebaseConfig);
