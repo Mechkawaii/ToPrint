@@ -826,6 +826,9 @@ function renderAll() {
   renderPrintTable();
   renderStockTable();
   renderLog();
+
+  // Notify external UI
+  window.dispatchEvent(new CustomEvent("mkRenderAll"));
 }
 
 /* ========= SYNC UI ========= */

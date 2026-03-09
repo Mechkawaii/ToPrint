@@ -611,28 +611,19 @@ function renderSyncInfo() {
   if (wsId) document.getElementById("syncCode").value = wsId;
 }
 
-// Override renderAll from app.js once it's loaded
-function patchRenderAll() {
-  if (!window._renderAll) { setTimeout(patchRenderAll, 200); return; }
-  var orig = window._renderAll;
-  window._renderAll = function() {
-    orig();
-    renderBottlenecks();
-    renderAssemblePreview();
-    renderStockCards();
-    renderPrintCards();
-    renderLogList();
-    renderSyncInfo();
-    document.getElementById("loadingScreen").style.display = "none";
-  };
-  // Trigger initial render
-  window._renderAll();
-}
+// Listen for renderAll event dispatched by app.js
+window.addEventListener("mkRenderAll", function() {
+  renderBottlenecks();
+  renderAssemblePreview();
+  renderStockCards();
+  renderPrintCards();
+  renderLogList();
+  renderSyncInfo();
+  document.getElementById("loadingScreen").style.display = "none";
+});
 
 // Stock search
 document.getElementById("stockSearch").addEventListener("input", renderStockCards);
-
-patchRenderAll();
 </script>
 
 <script type="module" src="./app.js"></script>
