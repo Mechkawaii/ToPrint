@@ -22,7 +22,7 @@ const firebaseConfig = {
   projectId: "mechkawaii-to-print",
   storageBucket: "mechkawaii-to-print.firebasestorage.app",
   messagingSenderId: "3742880689",
-  appId: "1:37428806089:web:6f389bd03566fd7b6a6818"
+  appId: "COLLE_ICI_L_APPID_EXACT"
 };
 
 const fbApp = initializeApp(firebaseConfig);
@@ -891,7 +891,7 @@ async function connectWorkspace(wsId) {
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
-    // first device creates cloud doc from local
+    // Premier device : crée le workspace cloud depuis le local
     await setDoc(ref, {
       state,
       updatedAt: serverTimestamp(),
@@ -900,22 +900,13 @@ async function connectWorkspace(wsId) {
 
     showSyncNotice(`✅ Synchro active (workspace créé) : ${wsId}`);
   } else {
-    // choose newest between local and cloud
+    // Workspace existant : on charge TOUJOURS le cloud, c'est lui qui fait autorité
     const cloud = normalizeCloudState(snap.data()?.state || {});
-    const cloudTs = stateUpdatedAt(cloud);
-    const localTs = stateUpdatedAt(state);
-
-    if (cloudTs && (!localTs || cloudTs > localTs)) {
-      suppressNextCloudWrite = true;
-      state = cloud;
-      saveLocalState(state);
-      renderAll();
-      showSyncNotice(`✅ Synchro active : ${wsId} (cloud chargé)`);
-    } else {
-      // local is newer -> push it once
-      showSyncNotice(`✅ Synchro active : ${wsId} (local envoyé)`);
-      scheduleCloudSave(true);
-    }
+    suppressNextCloudWrite = true;
+    state = cloud;
+    saveLocalState(state);
+    renderAll();
+    showSyncNotice(`✅ Synchro active : ${wsId} (cloud chargé)`);
   }
 
   // realtime updates
