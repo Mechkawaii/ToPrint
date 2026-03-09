@@ -1027,6 +1027,7 @@ function connectWorkspace(wsId) {
   var ref = db.collection("workspaces").doc(wsId);
   ref.get().then(function(snap) {
     if (!snap.exists) {
+      // Workspace inexistant : on le crée depuis le local (premier appareil)
       return ref.set({
         state: JSON.parse(JSON.stringify(state)),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -1037,17 +1038,13 @@ function connectWorkspace(wsId) {
       });
     }
 
+    // Workspace existant : on charge TOUJOURS le cloud, on ne pousse jamais par-dessus
     var cloud = normalizeState(snap.data().state || {});
-    if (stateTs(cloud) > stateTs(state)) {
-      state = cloud;
-      saveLocal();
-      renderAll();
-      showSyncNotice("✅ Connecté · données cloud chargées", "ok");
-    } else {
-      showSyncNotice("✅ Connecté · données locales envoyées", "ok");
-      scheduleCloudSave();
-    }
+    state = cloud;
+    saveLocal();
+    renderAll();
     setSyncStatus("✅ " + wsId, "connected");
+    showSyncNotice("✅ Connecté · données cloud chargées", "ok");
   }).catch(function(e) {
     setSyncStatus("⚠️ Erreur", "error");
     showSyncNotice("❌ Erreur : " + (e.message || e), "error");
