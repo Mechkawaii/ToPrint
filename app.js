@@ -1036,6 +1036,14 @@ async function main() {
     scheduleCloudSave(true);
   });
 
+
+   document.getElementById("btnReloadConfig")?.addEventListener("click", async () => {
+  if (!confirm("Recharger la config depuis items.json sans modifier les stocks ?")) return;
+
+  await reloadConfigKeepingStock();
+
+  alert("Configuration mise à jour et synchronisée 🔥");
+});
   // btnAssembleBox handled by index.html via window._assembleBox
 
 
@@ -1095,7 +1103,30 @@ main().catch((e) => {
   console.error(e);
   alert("Erreur au chargement : " + (e?.message || e));
 });
+async function reloadConfigKeepingStock() {
+  const base = await loadBaseItems(); // recharge items.json
 
+  const stockById = new Map(
+    state.items.map(it => [String(it.id), Number(it.stock) || 0])
+  );
+
+  state.items = base.map(baseItem => ({
+    ...baseItem,
+    stock: stockById.get(String(baseItem.id)) ?? baseItem.stock ?? 0
+  }));
+
+  state.meta = {
+    ...state.meta,
+    lastUpdatedAt: new Date().toISOString(),
+    lastUpdatedBy: DEVICE_ID
+  };
+
+  saveLocalState(state);
+  renderAll();
+
+  // 🔥 push Firebase
+  scheduleCloudSave(true);
+}
 /* ========= WINDOW EXPORTS (pour UI externe) ========= */
 window._getState = () => state;
 window._adjustStock = adjustStock;
